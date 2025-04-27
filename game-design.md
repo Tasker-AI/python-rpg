@@ -11,14 +11,22 @@ A simple top-down RPG where the player controls a hero who must explore a small 
 - Experience and leveling system
 
 ### Game World
-- Simple grid-based map (using 2D lists/arrays)
+- Tile-based grid map (using 2D lists/arrays)
+- Each tile is 32x32 pixels, matching the size of the player character
+- Player can only occupy one tile at a time
 - Multiple map areas, each with different terrain types (grass, water, forest, mountains)
 - NPCs and shops in towns
 - Enemies in wilderness areas
 - Hidden treasure and items
+- Collision detection for impassable terrain and objects
 
 ### Game Mechanics
-1. **Movement**: Click to move the player to a location on the map
+1. **Movement**: Tile-based movement system
+   - Click to move the player to a tile on the map
+   - Each tile of movement takes exactly 1 game tick (0.6 seconds)
+   - Pathfinding algorithm finds the shortest path to the clicked tile
+   - Player can move diagonally if no obstacles block the diagonal movement
+   - Movement path is visually displayed to the player
 2. **User Interface**: All interactions are mouse-based
    - Buttons for accessing menu, inventory, skills, etc.
    - Click on NPCs to interact with them
@@ -53,8 +61,10 @@ A simple top-down RPG where the player controls a hero who must explore a small 
 
 #### Map System
 - 2D list to represent the game world
-- Each cell contains information about terrain and objects
-- Collision detection for impassable terrain
+- Each cell is a 32x32 pixel tile containing information about terrain and objects
+- Tiles can be walkable or unwalkable
+- Pathfinding algorithm (A* or similar) to find optimal paths
+- Collision detection for impassable terrain and objects
 
 #### Combat System
 - Turn-based combat using while loops and conditionals

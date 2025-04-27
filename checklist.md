@@ -11,32 +11,36 @@
 - [x] Create main game loop
 - [x] Implement basic state management system
 - [x] Create tick-based update system (0.6 seconds per tick)
+- [x] Synchronize movement with game ticks (1 tile = 1 tick)
 
 ## Asset Management
-- [ ] Create folders for assets (images, sounds)
-- [ ] Implement asset loading system
-- [ ] Add placeholder graphics for player
-- [ ] Add placeholder graphics for terrain
-- [ ] Add placeholder graphics for items
+- [x] Create folders for assets (images, sounds)
+- [x] Implement asset loading system
+- [x] Add placeholder graphics for player
+- [x] Add placeholder graphics for terrain
+- [x] Add placeholder graphics for items
 - [ ] Add placeholder graphics for enemies
-- [ ] Add placeholder graphics for UI elements
+- [x] Add placeholder graphics for UI elements
 
 ## Map System
-- [ ] Create map data structure
-- [ ] Implement map loading from file
+- [x] Create tile-based map data structure (32x32 pixel tiles)
+- [x] Implement map loading from file
 - [ ] Create multiple map areas
-- [ ] Implement map rendering
-- [ ] Add collision detection for terrain
+- [x] Implement map rendering
+- [x] Add collision detection for terrain and objects
+- [x] Implement A* pathfinding algorithm
 - [ ] Create map transition system between areas
 
 ## Player System
-- [ ] Create player class with basic attributes
-- [ ] Implement click-to-move functionality with pathfinding
+- [x] Create player class with basic attributes
+- [x] Implement tile-based movement (1 tile = 1 game tick)
+- [x] Add diagonal movement when path is clear
+- [x] Implement movement queue for pathfinding
 - [ ] Add player animation
-- [ ] Implement player stats (health, attack, defense)
-- [ ] Add skill stats (woodcutting, firemaking, fishing, etc.)
-- [ ] Create experience and leveling system
-- [ ] Implement player rendering
+- [x] Implement player stats (health, attack, defense)
+- [x] Add skill stats (woodcutting, firemaking, fishing, etc.)
+- [x] Create experience and leveling system
+- [x] Implement player rendering
 
 ## Inventory System
 - [ ] Create Item class with properties

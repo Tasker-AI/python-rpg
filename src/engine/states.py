@@ -1,5 +1,8 @@
 import pygame
 from src.engine.game_state import GameState
+from src.engine.asset_manager import AssetManager
+from src.game.tilemap import TileMap, TileType
+from src.game.player import Player
 
 class MenuState(GameState):
     """Main menu state for the game"""
@@ -43,16 +46,46 @@ class PlayState(GameState):
         super().__init__()
         self.next_state = "menu"
         self.font = pygame.font.Font(None, 24)
-        self.player_pos = [400, 300]
-        self.target_pos = None
-        self.player_speed = 200  # pixels per second
         self.game_ticks = 0
         self.tick_rate = 0.6  # seconds per tick
         self.tick_timer = 0
         
+        # Asset manager
+        self.asset_manager = AssetManager()
+        
+        # Create tilemap
+        self.map_width = 25
+        self.map_height = 20
+        self.tile_size = 32
+        self.tilemap = TileMap(self.map_width, self.map_height, self.tile_size)
+        self.tilemap.set_asset_manager(self.asset_manager)
+        self.tilemap.create_test_map()  # Create a test map with various terrain
+        
+        # Camera position (top-left corner of the view)
+        self.camera_x = 0
+        self.camera_y = 0
+        
+        # Player (starts at grid position 5,5)
+        self.player = None  # Will be initialized in enter_state
+        
         # UI elements
         self.menu_button = pygame.Rect(700, 550, 80, 30)
         
+    def enter_state(self):
+        """Called when state becomes active."""
+        super().enter_state()
+        
+        # Load assets
+        self.asset_manager.load_image("player", "player.png")
+        self.asset_manager.load_image("grass", "grass.png")
+        self.asset_manager.load_image("water", "water.png")
+        self.asset_manager.load_image("tree", "tree.png")
+        self.asset_manager.load_image("rock", "rock.png")
+        
+        # Initialize player if not already created
+        if self.player is None:
+            self.player = Player(5, 5, self.tilemap, self.asset_manager)
+    
     def handle_events(self, events):
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
@@ -60,62 +93,45 @@ class PlayState(GameState):
                 if self.menu_button.collidepoint(event.pos):
                     self.done = True  # Return to menu
                 else:
+                    # Convert screen coordinates to world coordinates
+                    world_x = event.pos[0] + self.camera_x
+                    world_y = event.pos[1] + self.camera_y
                     # Set target position for player to move to
-                    self.target_pos = list(event.pos)
+                    self.player.move_to(world_x, world_y)
     
     def update(self, delta_time):
-        # Handle player movement with click-to-move
-        if self.target_pos:
-            # Calculate direction vector to target
-            dx = self.target_pos[0] - self.player_pos[0]
-            dy = self.target_pos[1] - self.player_pos[1]
-            
-            # Calculate distance to target
-            distance = (dx**2 + dy**2)**0.5
-            
-            if distance > 5:  # Only move if we're not very close to target
-                # Normalize direction vector and apply speed
-                dx = dx / distance * self.player_speed * delta_time
-                dy = dy / distance * self.player_speed * delta_time
-                
-                # Update position
-                self.player_pos[0] += dx
-                self.player_pos[1] += dy
-            else:
-                # We've reached the target
-                self.player_pos = list(self.target_pos)
-                self.target_pos = None
-            
-        # Keep player on screen
-        self.player_pos[0] = max(20, min(self.player_pos[0], 780))
-        self.player_pos[1] = max(20, min(self.player_pos[1], 580))
-        
         # Update game tick system
+        tick_occurred = False
         self.tick_timer += delta_time
         if self.tick_timer >= self.tick_rate:
             self.game_ticks += 1
             self.tick_timer -= self.tick_rate
+            tick_occurred = True
             # Process tick-based game logic here
             print(f"Game tick: {self.game_ticks}")
+        
+        # Update player
+        self.player.update(delta_time, tick_occurred)
+        
+        # Update camera to follow player
+        screen_width, screen_height = pygame.display.get_surface().get_size()
+        self.camera_x = self.player.x - screen_width // 2
+        self.camera_y = self.player.y - screen_height // 2
+        
+        # Keep camera within map bounds
+        self.camera_x = max(0, min(self.camera_x, self.map_width * self.tile_size - screen_width))
+        self.camera_y = max(0, min(self.camera_y, self.map_height * self.tile_size - screen_height))
     
     def draw(self, screen):
         # Draw game world
-        screen.fill((0, 80, 0))  # Green background for grass
+        self.tilemap.draw(screen, self.camera_x, self.camera_y)
         
-        # Draw target position indicator if we have one
-        if self.target_pos:
-            pygame.draw.circle(screen, (255, 255, 0), self.target_pos, 5, 1)
-            # Draw line from player to target
-            pygame.draw.line(screen, (255, 255, 0), 
-                           (self.player_pos[0], self.player_pos[1]), 
-                           (self.target_pos[0], self.target_pos[1]), 1)
-        
-        # Draw player as a red rectangle
-        pygame.draw.rect(screen, (255, 0, 0), 
-                        (self.player_pos[0] - 15, self.player_pos[1] - 15, 30, 30))
+        # Draw player
+        self.player.draw(screen, self.camera_x, self.camera_y)
         
         # Draw UI elements
         tick_text = self.font.render(f"Ticks: {self.game_ticks}", True, (255, 255, 255))
+        player_pos_text = self.font.render(f"Position: ({self.player.grid_x}, {self.player.grid_y})", True, (255, 255, 255))
         help_text = self.font.render("Click to move, use buttons for actions", True, (255, 255, 255))
         
         # Draw menu button
@@ -125,4 +141,5 @@ class PlayState(GameState):
         screen.blit(menu_text, menu_rect)
         
         screen.blit(tick_text, (10, 10))
+        screen.blit(player_pos_text, (10, 40))
         screen.blit(help_text, (10, 570))
