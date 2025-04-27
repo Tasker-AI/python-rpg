@@ -18,8 +18,13 @@ A simple top-down RPG where the player controls a hero who must explore a small 
 - Hidden treasure and items
 
 ### Game Mechanics
-1. **Movement**: Click to move
-2. **Combat**: Game tick based combat system
+1. **Movement**: Click to move the player to a location on the map
+2. **User Interface**: All interactions are mouse-based
+   - Buttons for accessing menu, inventory, skills, etc.
+   - Click on NPCs to interact with them
+   - Click on objects to interact with them
+   - Click on enemies to attack them
+3. **Combat**: Game tick based combat system
    - Each game tick is exactly 0.6 seconds
    - Player attacks each x ticks, depending on the weapon speed
    - Enemy attacks each x ticks, depending on the enemy

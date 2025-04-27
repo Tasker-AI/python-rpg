@@ -44,29 +44,47 @@ class PlayState(GameState):
         self.next_state = "menu"
         self.font = pygame.font.Font(None, 24)
         self.player_pos = [400, 300]
+        self.target_pos = None
         self.player_speed = 200  # pixels per second
         self.game_ticks = 0
         self.tick_rate = 0.6  # seconds per tick
         self.tick_timer = 0
         
+        # UI elements
+        self.menu_button = pygame.Rect(700, 550, 80, 30)
+        
     def handle_events(self, events):
         for event in events:
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    # Return to menu on ESC key
-                    self.done = True
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                # Check if menu button was clicked
+                if self.menu_button.collidepoint(event.pos):
+                    self.done = True  # Return to menu
+                else:
+                    # Set target position for player to move to
+                    self.target_pos = list(event.pos)
     
     def update(self, delta_time):
-        # Handle player movement with arrow keys
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            self.player_pos[0] -= self.player_speed * delta_time
-        if keys[pygame.K_RIGHT]:
-            self.player_pos[0] += self.player_speed * delta_time
-        if keys[pygame.K_UP]:
-            self.player_pos[1] -= self.player_speed * delta_time
-        if keys[pygame.K_DOWN]:
-            self.player_pos[1] += self.player_speed * delta_time
+        # Handle player movement with click-to-move
+        if self.target_pos:
+            # Calculate direction vector to target
+            dx = self.target_pos[0] - self.player_pos[0]
+            dy = self.target_pos[1] - self.player_pos[1]
+            
+            # Calculate distance to target
+            distance = (dx**2 + dy**2)**0.5
+            
+            if distance > 5:  # Only move if we're not very close to target
+                # Normalize direction vector and apply speed
+                dx = dx / distance * self.player_speed * delta_time
+                dy = dy / distance * self.player_speed * delta_time
+                
+                # Update position
+                self.player_pos[0] += dx
+                self.player_pos[1] += dy
+            else:
+                # We've reached the target
+                self.player_pos = list(self.target_pos)
+                self.target_pos = None
             
         # Keep player on screen
         self.player_pos[0] = max(20, min(self.player_pos[0], 780))
@@ -84,13 +102,27 @@ class PlayState(GameState):
         # Draw game world
         screen.fill((0, 80, 0))  # Green background for grass
         
+        # Draw target position indicator if we have one
+        if self.target_pos:
+            pygame.draw.circle(screen, (255, 255, 0), self.target_pos, 5, 1)
+            # Draw line from player to target
+            pygame.draw.line(screen, (255, 255, 0), 
+                           (self.player_pos[0], self.player_pos[1]), 
+                           (self.target_pos[0], self.target_pos[1]), 1)
+        
         # Draw player as a red rectangle
         pygame.draw.rect(screen, (255, 0, 0), 
                         (self.player_pos[0] - 15, self.player_pos[1] - 15, 30, 30))
         
         # Draw UI elements
         tick_text = self.font.render(f"Ticks: {self.game_ticks}", True, (255, 255, 255))
-        help_text = self.font.render("Arrow keys to move, ESC for menu", True, (255, 255, 255))
+        help_text = self.font.render("Click to move, use buttons for actions", True, (255, 255, 255))
+        
+        # Draw menu button
+        pygame.draw.rect(screen, (100, 100, 200), self.menu_button)
+        menu_text = self.font.render("Menu", True, (255, 255, 255))
+        menu_rect = menu_text.get_rect(center=self.menu_button.center)
+        screen.blit(menu_text, menu_rect)
         
         screen.blit(tick_text, (10, 10))
         screen.blit(help_text, (10, 570))

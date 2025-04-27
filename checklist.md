@@ -31,7 +31,7 @@
 
 ## Player System
 - [ ] Create player class with basic attributes
-- [ ] Implement click-to-move functionality
+- [ ] Implement click-to-move functionality with pathfinding
 - [ ] Add player animation
 - [ ] Implement player stats (health, attack, defense)
 - [ ] Add skill stats (woodcutting, firemaking, fishing, etc.)
@@ -81,9 +81,11 @@
 - [ ] Create UI manager
 - [ ] Implement health/stats display
 - [ ] Add minimap
-- [ ] Create menu system
-- [ ] Implement dialog boxes
+- [ ] Create button-based menu system
+- [ ] Implement dialog boxes with clickable options
 - [ ] Add notifications/alerts
+- [ ] Create UI buttons for all game functions (inventory, skills, etc.)
+- [ ] Implement mouse hover effects and tooltips
 
 ## Resource Gathering
 - [ ] Implement woodcutting system
