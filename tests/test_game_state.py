@@ -27,10 +27,17 @@ def test_game_state_manager():
     play_state = TestPlayState()
     
     # Add states to manager
-    # TODO: Add states after implementing add_state method
+    manager.add_state("menu", menu_state)
+    manager.add_state("play", play_state)
     
     # Test changing states
-    # TODO: Test state changes after implementing change_state method
+    manager.change_state("menu")
+    assert manager.current_state == "menu"
+    
+    # Test state update and transition
+    manager.update(0.1)  # This should trigger the transition in TestMenuState
+    assert menu_state.done == True
+    assert manager.current_state == "play"
     
     # Basic assertion - we have a manager object
     assert isinstance(manager, GameStateManager)

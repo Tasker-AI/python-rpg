@@ -9,8 +9,8 @@
 ## Core Engine
 - [x] Implement game clock and delta time
 - [x] Create main game loop
-- [ ] Implement basic state management system
-- [ ] Create tick-based update system
+- [x] Implement basic state management system
+- [x] Create tick-based update system (0.6 seconds per tick)
 
 ## Asset Management
 - [ ] Create folders for assets (images, sounds)

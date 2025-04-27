@@ -33,25 +33,35 @@ class GameStateManager:
         
     def add_state(self, state_name, state):
         """Add a state to the state manager."""
-        # TODO: Implement this method
-        pass
+        self.states[state_name] = state
         
     def change_state(self, state_name):
         """Change to a different state."""
-        # TODO: Implement this method
-        pass
+        if state_name in self.states:
+            # Exit current state if it exists
+            if self.current_state:
+                self.states[self.current_state].exit_state()
+            
+            # Change to new state
+            self.current_state = state_name
+            self.states[self.current_state].enter_state()
         
     def update(self, delta_time):
         """Update current state and handle state changes."""
-        # TODO: Implement this method
-        pass
+        if self.current_state:
+            current = self.states[self.current_state]
+            current.update(delta_time)
+            
+            # Check if state is done and needs to transition
+            if current.done:
+                self.change_state(current.next_state)
         
     def draw(self, screen):
         """Draw current state to the screen."""
-        # TODO: Implement this method
-        pass
+        if self.current_state:
+            self.states[self.current_state].draw(screen)
         
     def handle_events(self, events):
         """Pass events to current state."""
-        # TODO: Implement this method
-        pass
+        if self.current_state:
+            self.states[self.current_state].handle_events(events)

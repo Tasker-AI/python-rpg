@@ -20,6 +20,7 @@ A simple top-down RPG where the player controls a hero who must explore a small 
 ### Game Mechanics
 1. **Movement**: Click to move
 2. **Combat**: Game tick based combat system
+   - Each game tick is exactly 0.6 seconds
    - Player attacks each x ticks, depending on the weapon speed
    - Enemy attacks each x ticks, depending on the enemy
    - Damage calculation based on attack, defense, armor, and random factors
