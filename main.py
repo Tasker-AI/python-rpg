@@ -4,9 +4,15 @@ import os
 from datetime import datetime
 from src.engine.game_state import GameStateManager
 from src.engine.states import MenuState, PlayState
+from src.engine.logger import game_logger
+from src.engine.click_simulator import click_simulator
 
 # Initialize pygame
 pygame.init()
+
+# Ensure logs directory exists
+os.makedirs('logs', exist_ok=True)
+game_logger.info("Starting game")
 
 # Game constants
 SCREEN_WIDTH = 800
@@ -24,21 +30,31 @@ BLUE = (0, 0, 255)
 # Game setup code
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Python RPG")
+game_logger.info(f"Screen initialized: {SCREEN_WIDTH}x{SCREEN_HEIGHT}")
 
 # Create a clock for tracking delta time
 clock = pygame.time.Clock()
 
-# Initialize game state manager
+# Initialize font for FPS display
+font = pygame.font.SysFont(None, 24)
+
+# Create state manager
 state_manager = GameStateManager()
 
-# Create and add game states
-menu_state = MenuState()
-play_state = PlayState()
-state_manager.add_state("menu", menu_state)
-state_manager.add_state("play", play_state)
+# Create asset manager
+from src.engine.asset_manager import AssetManager
+asset_manager = AssetManager()
 
-# Start with the menu state
-state_manager.change_state("menu")
+# Add states
+state_manager.add_state("menu", MenuState())
+state_manager.add_state("play", PlayState(asset_manager))
+
+# Set initial state
+state_manager.change_state("play")
+
+# Start click simulator
+click_simulator.start()
+game_logger.info("Click simulator ready - use the console to simulate clicks")
 
 # Variables for tick-based system
 tick_timer = 0
@@ -47,13 +63,19 @@ game_ticks = 0
 # Main game loop
 running = True
 while running:
-    # Calculate delta time in seconds (time passed since last frame)
+    # Calculate delta time
     delta_time = clock.tick(FPS) / 1000.0
     
-    # Handle events
+    # Handle events from both pygame and simulator
     events = pygame.event.get()
+    simulated_events = click_simulator.get_events()
+    if simulated_events:
+        game_logger.info(f"Processing {len(simulated_events)} simulated events")
+        events.extend(simulated_events)
+    
     for event in events:
         if event.type == pygame.QUIT:
+            game_logger.info("Game quit requested")
             running = False
     
     # Pass events to current state
@@ -82,5 +104,7 @@ while running:
     pygame.display.flip()
 
 # Clean up
+game_logger.info("Game shutting down")
+click_simulator.stop()
 pygame.quit()
 sys.exit()

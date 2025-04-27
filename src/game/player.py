@@ -1,6 +1,7 @@
 import pygame
 import math
 from collections import deque
+from src.engine.logger import game_logger
 
 class Player:
     """
@@ -22,8 +23,24 @@ class Player:
         self.next_grid_x = None
         self.next_grid_y = None
         
+        # Interpolation variables for smooth movement
+        self.start_x = self.x
+        self.start_y = self.y
+        self.target_x = self.x
+        self.target_y = self.y
+        self.tick_rate = 0.6  # Same as game tick rate
+        
         # Path visualization
         self.current_path = []
+        
+        # Pending movements to be processed on tick
+        self.pending_movements = []
+        
+        # Track final destination for verification
+        self.final_destination = None
+        
+        # Create player rectangle for collision
+        self.rect = pygame.Rect(self.x - 16, self.y - 16, 32, 32)
         
         # Attributes and stats
         self.max_health = 100
@@ -56,63 +73,229 @@ class Player:
         # Collision rectangle
         self.rect = pygame.Rect(self.x - 16, self.y - 16, 32, 32)
     
+    def queue_movement(self, grid_x, grid_y):
+        """Queue a movement to be processed on the next game tick."""
+        game_logger.debug(f"Player.queue_movement: Current tile: ({self.grid_x}, {self.grid_y}), Target tile: ({grid_x}, {grid_y})")
+        
+        # Check if target is within map bounds
+        if not (0 <= grid_x < self.tilemap.width and 0 <= grid_y < self.tilemap.height):
+            game_logger.warning(f"Target tile ({grid_x}, {grid_y}) is outside map bounds")
+            return
+            
+        # Check if target is walkable
+        if not self.tilemap.is_walkable(grid_x, grid_y):
+            game_logger.warning(f"Target tile ({grid_x}, {grid_y}) is not walkable")
+            return
+        
+        # Add to pending movements (will be processed on next tick)
+        self.pending_movements.append((grid_x, grid_y))
+        game_logger.debug(f"Added movement to ({grid_x}, {grid_y}) to pending queue. Queue size: {len(self.pending_movements)}")
+    
+    def process_movement_queue(self):
+        """Process the pending movement queue on a game tick."""
+        if not self.pending_movements:
+            return
+        
+        # Get the most recent click and clear the queue
+        grid_x, grid_y = self.pending_movements[-1]
+        self.pending_movements.clear()
+        game_logger.debug(f"Processing movement to ({grid_x}, {grid_y}) on tick")
+        
+        # Find path to target
+        path = self.tilemap.find_path(self.grid_x, self.grid_y, grid_x, grid_y)
+        
+        # Log path information
+        if path:
+            game_logger.debug(f"Path found with {len(path)} steps")
+            game_logger.debug(f"Path: {path}")
+        else:
+            game_logger.warning(f"No path found to ({grid_x}, {grid_y})")
+            return
+        
+        # Clear current movement queue and add new path
+        self.movement_queue.clear()
+        game_logger.debug(f"Cleared movement queue")
+        
+        # Store the final destination for verification
+        self.final_destination = (grid_x, grid_y)
+        
+        if path:
+            # Make sure the target tile is the last one in the path
+            if path[-1] != (grid_x, grid_y):
+                game_logger.warning(f"Target tile ({grid_x}, {grid_y}) not in path, forcing it")
+                path.append((grid_x, grid_y))
+            
+            # Skip the first position (current position) if it exists
+            start_index = 1 if len(path) > 1 and path[0] == (self.grid_x, self.grid_y) else 0
+            
+            # Add all path steps to the movement queue
+            for x, y in path[start_index:]:
+                self.movement_queue.append((x, y))
+            
+            game_logger.debug(f"Added {len(self.movement_queue)} steps to movement queue: {list(self.movement_queue)}")
+            
+            # Start moving to the first position in the queue
+            self.start_next_move()
+    
+    def move_to_tile(self, grid_x, grid_y):
+        """Set a target position for the player to move towards using pathfinding."""
+        game_logger.info(f"MOVE_TO_TILE: Player at ({self.grid_x}, {self.grid_y}) moving to ({grid_x}, {grid_y})")
+        
+        # Check if target is within map bounds
+        if not (0 <= grid_x < self.tilemap.width and 0 <= grid_y < self.tilemap.height):
+            game_logger.warning(f"Target tile ({grid_x}, {grid_y}) is outside map bounds")
+            return
+            
+        # Check if target is walkable
+        if not self.tilemap.is_walkable(grid_x, grid_y):
+            game_logger.warning(f"Target tile ({grid_x}, {grid_y}) is not walkable")
+            return
+            
+        # If we're already at the target tile, no need to move
+        if self.grid_x == grid_x and self.grid_y == grid_y:
+            game_logger.info(f"Already at target tile ({grid_x}, {grid_y})")
+            return
+        
+        # Find path to target
+        path = self.tilemap.find_path(self.grid_x, self.grid_y, grid_x, grid_y)
+        
+        # Log path information
+        if path:
+            game_logger.debug(f"Path found with {len(path)} steps")
+            game_logger.debug(f"Path: {path}")
+        else:
+            game_logger.warning(f"No path found to ({grid_x}, {grid_y})")
+            return
+        
+        # Clear current movement queue and add new path
+        self.movement_queue.clear()
+        game_logger.debug(f"Cleared movement queue")
+        
+        if path:
+            # Make sure the target tile is the last one in the path
+            if path[-1] != (grid_x, grid_y):
+                game_logger.debug(f"Adding target tile ({grid_x}, {grid_y}) to path")
+                path.append((grid_x, grid_y))
+            
+            # Skip the first position (current position)
+            if len(path) > 1:
+                for x, y in path[1:]:
+                    self.movement_queue.append((x, y))
+            
+            game_logger.debug(f"Added {len(self.movement_queue)} steps to movement queue")
+            
+            # Start moving to the first position in the queue
+            self.start_next_move()
+    
     def move_to(self, pixel_x, pixel_y):
         """Set a target position for the player to move towards using pathfinding."""
         # Convert pixel coordinates to grid coordinates
         target_grid_x, target_grid_y = self.tilemap.pixel_to_grid(pixel_x, pixel_y)
         
-        # Find path to target
-        path = self.tilemap.find_path(self.grid_x, self.grid_y, target_grid_x, target_grid_y)
-        
-        # Clear current movement queue and add new path
-        self.movement_queue.clear()
-        self.current_path = path
-        
-        # Skip the first position (current position)
-        if len(path) > 1:
-            for x, y in path[1:]:
-                self.movement_queue.append((x, y))
-            
-            # Start moving to the first position in the queue
-            self.start_next_move()
+        # Use the more reliable tile-based movement method
+        self.move_to_tile(target_grid_x, target_grid_y)
     
     def start_next_move(self):
         """Start moving to the next position in the queue."""
         if self.movement_queue:
             self.next_grid_x, self.next_grid_y = self.movement_queue.popleft()
+            game_logger.debug(f"Moving to next tile: ({self.next_grid_x}, {self.next_grid_y})")
+            
+            # Verify the tile is walkable
+            if not self.tilemap.is_walkable(self.next_grid_x, self.next_grid_y):
+                game_logger.warning(f"Attempted to move to non-walkable tile ({self.next_grid_x}, {self.next_grid_y}), skipping")
+                self.start_next_move()  # Try the next tile in the queue
+                return
+                
             self.moving = True
             self.move_progress = 0.0
         else:
+            # No more moves in the queue
             self.moving = False
             self.next_grid_x = None
             self.next_grid_y = None
+            
+            # Set position to exact center of current tile
+            exact_x, exact_y = self.tilemap.grid_to_pixel(self.grid_x, self.grid_y)
+            self.x = exact_x
+            self.y = exact_y
+            
+            # Check if we reached our final destination
+            if self.final_destination:
+                if (self.grid_x, self.grid_y) == self.final_destination:
+                    game_logger.info(f"DESTINATION REACHED: Player arrived at final destination {self.final_destination} at exact center ({self.x}, {self.y})")
+                else:
+                    game_logger.warning(f"DESTINATION MISSED: Player stopped at ({self.grid_x}, {self.grid_y}) but destination was {self.final_destination}")
+                self.final_destination = None
+            
             self.current_path = []
     
     def update(self, delta_time, tick_occurred=False):
         """Update player position and state."""
-        if self.moving and self.next_grid_x is not None and self.next_grid_y is not None:
-            if tick_occurred:
+        # Handle movement state
+        if self.moving:
+            if tick_occurred and self.next_grid_x is not None and self.next_grid_y is not None:
+                # Log current state before movement
+                game_logger.debug(f"Player tick update: Current position: ({self.x}, {self.y}), Tile: ({self.grid_x}, {self.grid_y})")
+                
                 # Complete the move on a game tick
                 self.grid_x = self.next_grid_x
                 self.grid_y = self.next_grid_y
-                self.x, self.y = self.tilemap.grid_to_pixel(self.grid_x, self.grid_y)
-                self.rect.x = self.x - 16
-                self.rect.y = self.y - 16
                 
-                # Start next move if there are more in the queue
-                self.start_next_move()
-            else:
-                # Smooth visual movement between ticks
-                # Calculate progress based on time until next tick
-                target_x, target_y = self.tilemap.grid_to_pixel(self.next_grid_x, self.next_grid_y)
-                start_x, start_y = self.tilemap.grid_to_pixel(self.grid_x, self.grid_y)
+                # Get the exact center pixel position for the new grid position
+                exact_x, exact_y = self.tilemap.grid_to_pixel(self.grid_x, self.grid_y)
                 
-                # Update visual position based on progress
-                self.move_progress = min(1.0, self.move_progress + delta_time / 0.6)  # 0.6 seconds per tick
-                self.x = start_x + (target_x - start_x) * self.move_progress
-                self.y = start_y + (target_y - start_y) * self.move_progress
+                # Store start position for interpolation
+                self.start_x = self.x
+                self.start_y = self.y
+                self.target_x = exact_x
+                self.target_y = exact_y
+                self.move_progress = 0.0
                 
-                # Update collision rectangle
+                game_logger.info(f"Player moved to tile: ({self.grid_x}, {self.grid_y}), Exact center: ({exact_x}, {exact_y})")
+                
+                # If this is the final destination, log it
+                if self.final_destination and (self.grid_x, self.grid_y) == self.final_destination:
+                    game_logger.info(f"DESTINATION REACHED: Player arrived at final destination {self.final_destination}")
+                    self.final_destination = None
+                
+                # Check if there are more moves in the queue
+                if len(self.movement_queue) > 0:
+                    self.start_next_move()
+                else:
+                    # If no more moves, continue interpolation but mark as not moving
+                    # This allows the interpolation to finish without jerky movement
+                    self.next_grid_x = None
+                    self.next_grid_y = None
+                    # Don't set moving=False yet - we'll do that when interpolation completes
+                    game_logger.info(f"Final movement to exact center: ({exact_x}, {exact_y})")
+            
+            # Always update interpolation when moving, regardless of tick
+            # Smooth movement between positions using interpolation
+            self.move_progress = min(1.0, self.move_progress + delta_time / self.tick_rate)
+            
+            # Interpolate position
+            self.x = self.start_x + (self.target_x - self.start_x) * self.move_progress
+            self.y = self.start_y + (self.target_y - self.start_y) * self.move_progress
+            
+            # Update collision rectangle
+            self.rect.x = self.x - 16
+            self.rect.y = self.y - 16
+            
+            # If interpolation is complete and no more moves, mark as not moving
+            if self.move_progress >= 0.99 and len(self.movement_queue) == 0 and self.next_grid_x is None:
+                self.moving = False
+                # Ensure exact position at end of movement
+                self.x = self.target_x
+                self.y = self.target_y
+                game_logger.debug(f"Movement complete, final position: ({self.x}, {self.y})")
+        
+        # If we're not moving, ensure we're exactly at the center of our tile
+        elif not self.moving:
+            exact_x, exact_y = self.tilemap.grid_to_pixel(self.grid_x, self.grid_y)
+            if abs(self.x - exact_x) > 0.01 or abs(self.y - exact_y) > 0.01:
+                game_logger.info(f"Correcting player position from ({self.x}, {self.y}) to exact center: ({exact_x}, {exact_y})")
+                self.x, self.y = exact_x, exact_y
                 self.rect.x = self.x - 16
                 self.rect.y = self.y - 16
     

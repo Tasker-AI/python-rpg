@@ -12,6 +12,9 @@
 - [x] Implement basic state management system
 - [x] Create tick-based update system (0.6 seconds per tick)
 - [x] Synchronize movement with game ticks (1 tile = 1 tick)
+- [x] Implement camera system to follow player
+- [x] Add efficient map scrolling
+- [x] Implement detailed logging system for debugging
 
 ## Asset Management
 - [x] Create folders for assets (images, sounds)
@@ -25,17 +28,20 @@
 ## Map System
 - [x] Create tile-based map data structure (32x32 pixel tiles)
 - [x] Implement map loading from file
-- [ ] Create multiple map areas
+- [x] Expand map size to at least 250x200 tiles
 - [x] Implement map rendering
+- [x] Optimize rendering to only draw visible tiles
 - [x] Add collision detection for terrain and objects
 - [x] Implement A* pathfinding algorithm
-- [ ] Create map transition system between areas
 
 ## Player System
 - [x] Create player class with basic attributes
 - [x] Implement tile-based movement (1 tile = 1 game tick)
 - [x] Add diagonal movement when path is clear
 - [x] Implement movement queue for pathfinding
+- [x] Keep player centered on screen at all times
+- [x] Add click indicators for movement targets
+- [x] Implement tick-based movement processing
 - [ ] Add player animation
 - [x] Implement player stats (health, attack, defense)
 - [x] Add skill stats (woodcutting, firemaking, fishing, etc.)
@@ -62,6 +68,14 @@
 - [ ] Add combat animation
 - [ ] Implement player death/respawn
 
+## Testing
+- [x] Create unit tests for game state management
+- [x] Create unit tests for player movement and stats
+- [x] Create unit tests for tilemap and pathfinding
+- [x] Create unit tests for tick-based update system
+- [ ] Create integration tests for game systems
+- [x] Implement detailed logging for debugging and diagnostics
+
 ## NPC System
 - [ ] Create NPC class
 - [ ] Implement dialog system
@@ -81,13 +95,23 @@
 - [ ] Add character creation functionality
 - [ ] Implement save file loading
 
+## Debugging
+- [x] Implement comprehensive logging system
+- [x] Add console-based click simulator for testing
+- [x] Implement debug overlay with game stats
+- [x] Add visual indicators for game events
+- [ ] Add debug mode toggle
+
 ## UI System
 - [ ] Create UI manager
+- [x] Implement visual feedback for player actions (click indicators)
 - [ ] Implement health/stats display
-- [ ] Add minimap
-- [ ] Create button-based menu system
-- [ ] Implement dialog boxes with clickable options
-- [ ] Add notifications/alerts
+- [ ] Add inventory UI
+- [ ] Create skill menu
+- [ ] Implement quest log
+- [ ] Add dialog system for NPCs
+- [ ] Create shop interface
+- [ ] Add settings menu
 - [ ] Create UI buttons for all game functions (inventory, skills, etc.)
 - [ ] Implement mouse hover effects and tooltips
 

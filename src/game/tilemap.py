@@ -3,6 +3,7 @@ import json
 import heapq
 import math
 from enum import Enum
+from src.engine.logger import game_logger
 
 class TileType(Enum):
     """Enum for different tile types"""
@@ -55,6 +56,19 @@ class TileMap:
         """Set the asset manager for loading tile images"""
         self.asset_manager = asset_manager
     
+    def grid_to_pixel(self, grid_x, grid_y):
+        """Convert grid coordinates to pixel coordinates (center of tile)"""
+        return (grid_x * self.tile_size + self.tile_size // 2, 
+                grid_y * self.tile_size + self.tile_size // 2)
+    
+    def pixel_to_grid(self, pixel_x, pixel_y):
+        """Convert pixel coordinates to grid coordinates"""
+        # Use integer division to get the correct grid coordinates
+        grid_x = int(pixel_x // self.tile_size)
+        grid_y = int(pixel_y // self.tile_size)
+        game_logger.debug(f"Converting pixel ({pixel_x}, {pixel_y}) to grid ({grid_x}, {grid_y})")
+        return (grid_x, grid_y)
+    
     def get_tile(self, x, y):
         """Get the tile at the specified grid coordinates"""
         if 0 <= x < self.width and 0 <= y < self.height:
@@ -68,18 +82,21 @@ class TileMap:
             self.tiles[x][y] = Tile(tile_type, walkable, x, y)
     
     def is_walkable(self, x, y):
-        """Check if the tile at the specified grid coordinates is walkable"""
-        tile = self.get_tile(x, y)
-        return tile is not None and tile.walkable
+        """Check if a tile is walkable"""
+        if not self.is_valid_tile(x, y):
+            game_logger.debug(f"Tile ({x}, {y}) is outside map bounds")
+            return False
+        walkable = self.tiles[x][y].walkable
+        if not walkable:
+            game_logger.debug(f"Tile ({x}, {y}) is not walkable, type: {self.tiles[x][y].tile_type}")
+        return walkable
     
-    def grid_to_pixel(self, grid_x, grid_y):
-        """Convert grid coordinates to pixel coordinates (center of tile)"""
-        return (grid_x * self.tile_size + self.tile_size // 2, 
-                grid_y * self.tile_size + self.tile_size // 2)
-    
-    def pixel_to_grid(self, pixel_x, pixel_y):
-        """Convert pixel coordinates to grid coordinates"""
-        return (pixel_x // self.tile_size, pixel_y // self.tile_size)
+    def is_valid_tile(self, x, y):
+        """Check if coordinates are within the map"""
+        valid = 0 <= x < self.width and 0 <= y < self.height
+        if not valid:
+            game_logger.debug(f"Tile ({x}, {y}) is outside map bounds ({self.width}x{self.height})")
+        return valid
     
     def load_from_file(self, filename):
         """Load the map from a JSON file"""
@@ -136,17 +153,32 @@ class TileMap:
             return False
     
     def draw(self, screen, camera_x=0, camera_y=0):
-        """Draw the tilemap to the screen"""
+        """Draw the tilemap to the screen, optimized to only render visible tiles"""
         if not self.asset_manager:
             print("Warning: Asset manager not set for tilemap")
             return
             
-        # Calculate visible range of tiles
+        # Calculate visible range of tiles with a small buffer for smooth scrolling
         screen_width, screen_height = screen.get_size()
-        start_x = max(0, camera_x // self.tile_size - 1)
-        end_x = min(self.width, (camera_x + screen_width) // self.tile_size + 1)
-        start_y = max(0, camera_y // self.tile_size - 1)
-        end_y = min(self.height, (camera_y + screen_height) // self.tile_size + 1)
+        buffer = 2  # Extra tiles to render beyond visible area
+        
+        # Convert to integers to avoid 'float cannot be interpreted as integer' error
+        start_x = max(0, int(camera_x // self.tile_size) - buffer)
+        end_x = min(self.width, int((camera_x + screen_width) // self.tile_size) + buffer)
+        start_y = max(0, int(camera_y // self.tile_size) - buffer)
+        end_y = min(self.height, int((camera_y + screen_height) // self.tile_size) + buffer)
+        
+        game_logger.debug(f"Drawing tiles from ({start_x}, {start_y}) to ({end_x}, {end_y})")
+        
+        # Track statistics for debugging
+        tiles_drawn = 0
+        total_tiles = self.width * self.height
+        
+        # Pre-fetch commonly used images
+        grass_img = self.asset_manager.get_image("grass")
+        water_img = self.asset_manager.get_image("water")
+        tree_img = self.asset_manager.get_image("tree")
+        rock_img = self.asset_manager.get_image("rock")
         
         # Draw visible tiles
         for x in range(start_x, end_x):
@@ -155,145 +187,236 @@ class TileMap:
                 pixel_x = x * self.tile_size - camera_x
                 pixel_y = y * self.tile_size - camera_y
                 
+                # Skip rendering if completely outside the screen
+                if (pixel_x + self.tile_size < 0 or pixel_x > screen_width or
+                    pixel_y + self.tile_size < 0 or pixel_y > screen_height):
+                    continue
+                
+                tiles_drawn += 1
+                
                 # Draw tile based on type
                 if tile.tile_type == TileType.EMPTY:
                     pygame.draw.rect(screen, (0, 0, 0), (pixel_x, pixel_y, self.tile_size, self.tile_size))
                 elif tile.tile_type == TileType.GRASS:
-                    image = self.asset_manager.get_image("grass")
-                    screen.blit(image, (pixel_x, pixel_y))
+                    screen.blit(grass_img, (pixel_x, pixel_y))
                 elif tile.tile_type == TileType.WATER:
-                    image = self.asset_manager.get_image("water")
-                    screen.blit(image, (pixel_x, pixel_y))
+                    screen.blit(water_img, (pixel_x, pixel_y))
                 elif tile.tile_type == TileType.TREE:
                     # Draw grass underneath tree
-                    image = self.asset_manager.get_image("grass")
-                    screen.blit(image, (pixel_x, pixel_y))
+                    screen.blit(grass_img, (pixel_x, pixel_y))
                     # Draw tree on top
-                    image = self.asset_manager.get_image("tree")
-                    screen.blit(image, (pixel_x, pixel_y - self.tile_size))  # Tree is taller
+                    screen.blit(tree_img, (pixel_x, pixel_y - self.tile_size))  # Tree is taller
                 elif tile.tile_type == TileType.ROCK:
                     # Draw grass underneath rock
-                    image = self.asset_manager.get_image("grass")
-                    screen.blit(image, (pixel_x, pixel_y))
+                    screen.blit(grass_img, (pixel_x, pixel_y))
                     # Draw rock on top
-                    image = self.asset_manager.get_image("rock")
-                    screen.blit(image, (pixel_x, pixel_y))
+                    screen.blit(rock_img, (pixel_x, pixel_y))
                 elif tile.tile_type == TileType.SAND:
                     pygame.draw.rect(screen, (240, 230, 140), (pixel_x, pixel_y, self.tile_size, self.tile_size))
+        
+        # Print rendering statistics (uncomment for debugging)
+        # print(f"Rendered {tiles_drawn} of {total_tiles} tiles ({tiles_drawn/total_tiles*100:.2f}%)")
     
     def find_path(self, start_x, start_y, end_x, end_y):
         """
         Find a path from start to end using A* pathfinding algorithm.
-        Returns a list of (x, y) tuples representing the path.
         """
-        # Check if start and end are valid
-        if not self.is_walkable(start_x, start_y) or not self.is_walkable(end_x, end_y):
+        game_logger.debug(f"Finding path from ({start_x}, {start_y}) to ({end_x}, {end_y})")
+        
+        # If start and end are the same, return just the start position
+        if (start_x, start_y) == (end_x, end_y):
+            game_logger.debug(f"Start and end are the same tile, returning simple path")
+            return [(start_x, start_y)]
+        
+        # Check if start and end are valid tiles
+        if not self.is_valid_tile(start_x, start_y):
+            game_logger.warning(f"Start tile ({start_x}, {start_y}) is invalid")
+            return []
+            
+        if not self.is_valid_tile(end_x, end_y):
+            game_logger.warning(f"End tile ({end_x}, {end_y}) is invalid")
+            return []
+        
+        # Check if end tile is walkable
+        if not self.is_walkable(end_x, end_y):
+            game_logger.warning(f"End tile ({end_x}, {end_y}) is not walkable")
             return []
         
         # A* algorithm
-        start_tile = self.tiles[start_x][start_y]
-        end_tile = self.tiles[end_x][end_y]
-        
-        # Reset pathfinding values
-        for x in range(self.width):
-            for y in range(self.height):
-                tile = self.tiles[x][y]
-                tile.f_score = float('inf')
-                tile.g_score = float('inf')
-                tile.parent = None
-        
-        # Set start values
-        start_tile.g_score = 0
-        start_tile.f_score = self.heuristic(start_tile, end_tile)
-        
-        # Open and closed sets
         open_set = []
-        heapq.heappush(open_set, start_tile)
         closed_set = set()
         
+        # Add start node to open set
+        heapq.heappush(open_set, (0, (start_x, start_y)))
+        
+        # Dictionary to store the cost to reach each node
+        g_score = {(start_x, start_y): 0}
+        
+        # Dictionary to store the parent of each node
+        came_from = {}
+        
+        # Track algorithm stats
+        nodes_examined = 0
+        
         while open_set:
-            current = heapq.heappop(open_set)
+            # Get the node with the lowest f_score
+            current_f, current = heapq.heappop(open_set)
+            nodes_examined += 1
             
-            # Check if we reached the end
-            if current == end_tile:
-                # Reconstruct path
+            # If we've reached the end, reconstruct the path
+            if current == (end_x, end_y):
                 path = []
-                while current:
-                    path.append((current.x, current.y))
-                    current = current.parent
-                return path[::-1]  # Reverse to get start-to-end
+                while current in came_from:
+                    path.append(current)
+                    current = came_from[current]
+                path.append((start_x, start_y))
+                path.reverse()
+                
+                # Ensure the target tile is the last in the path
+                if path[-1] != (end_x, end_y):
+                    game_logger.debug(f"Adding target tile ({end_x}, {end_y}) to path")
+                    path.append((end_x, end_y))
+                
+                game_logger.debug(f"Path found with {len(path)} steps, examined {nodes_examined} nodes")
+                game_logger.debug(f"Final path: {path}")
+                return path
             
+            # Add current node to closed set
             closed_set.add(current)
             
-            # Check neighbors
+            # Check all neighbors
             for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]:
-                nx, ny = current.x + dx, current.y + dy
+                neighbor = (current[0] + dx, current[1] + dy)
                 
-                # Skip if out of bounds or not walkable
-                if not self.is_walkable(nx, ny):
+                # Skip if neighbor is not valid or not walkable
+                if not self.is_valid_tile(neighbor[0], neighbor[1]):
+                    continue
+                    
+                if not self.is_walkable(neighbor[0], neighbor[1]):
                     continue
                 
-                neighbor = self.tiles[nx][ny]
-                
-                # Skip if already evaluated
+                # Skip if neighbor is in closed set
                 if neighbor in closed_set:
                     continue
                 
-                # Check if diagonal movement is blocked
-                if abs(dx) == 1 and abs(dy) == 1:
-                    # Check if diagonal movement is blocked by obstacles
-                    if not self.is_walkable(current.x + dx, current.y) or not self.is_walkable(current.x, current.y + dy):
+                # Check for diagonal movement
+                if dx != 0 and dy != 0:
+                    # Check if we can move diagonally (both adjacent tiles must be walkable)
+                    if not self.is_walkable(current[0] + dx, current[1]) or not self.is_walkable(current[0], current[1] + dy):
+                        game_logger.debug(f"Diagonal movement blocked at ({neighbor[0]}, {neighbor[1]})")
                         continue
                 
-                # Calculate tentative g score
+                # Calculate tentative g_score
                 # Diagonal movement costs more
-                move_cost = 1.4 if abs(dx) + abs(dy) == 2 else 1.0
-                tentative_g = current.g_score + move_cost
+                if dx != 0 and dy != 0:
+                    tentative_g = g_score[current] + 1.4  # sqrt(2)
+                else:
+                    tentative_g = g_score[current] + 1
                 
-                # Skip if this path is worse
-                if tentative_g >= neighbor.g_score:
-                    continue
-                
-                # This is the best path so far
-                neighbor.parent = current
-                neighbor.g_score = tentative_g
-                neighbor.f_score = tentative_g + self.heuristic(neighbor, end_tile)
-                
-                # Add to open set if not already there
-                if neighbor not in [item for item in open_set]:
-                    heapq.heappush(open_set, neighbor)
+                # If neighbor is not in open set or tentative_g is better than previous
+                if neighbor not in g_score or tentative_g < g_score[neighbor]:
+                    # Update came_from and g_score
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g
+                    
+                    # Calculate f_score (g_score + heuristic)
+                    f_score = tentative_g + self.heuristic(neighbor, (end_x, end_y))
+                    
+                    # Add to open set if not already there
+                    if neighbor not in [item[1] for item in open_set]:
+                        heapq.heappush(open_set, (f_score, neighbor))
         
         # No path found
+        game_logger.warning(f"No path found from ({start_x}, {start_y}) to ({end_x}, {end_y}), examined {nodes_examined} nodes")
         return []
     
     def heuristic(self, a, b):
-        """Heuristic function for A* (Euclidean distance)"""
-        return math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
+        """Calculate the heuristic (estimated distance) between two tiles"""
+        return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
     
     def create_test_map(self):
-        """Create a simple test map with various terrain types"""
+        """Create a large test map with various terrain types"""
         # Fill with grass
         for x in range(self.width):
             for y in range(self.height):
                 self.set_tile(x, y, TileType.GRASS)
         
-        # Add some water
-        for x in range(5, 8):
-            for y in range(3, 10):
+        # Add lakes (large water areas)
+        # Lake 1
+        for x in range(20, 40):
+            for y in range(30, 50):
                 self.set_tile(x, y, TileType.WATER)
         
-        # Add some trees
-        for x in range(12, 15):
-            for y in range(5, 8):
+        # Lake 2
+        for x in range(150, 180):
+            for y in range(100, 130):
+                self.set_tile(x, y, TileType.WATER)
+        
+        # Add forests (clusters of trees)
+        # Forest 1
+        for x in range(60, 90):
+            for y in range(40, 60):
+                if (x + y) % 3 != 0:  # Make it less uniform
+                    self.set_tile(x, y, TileType.TREE)
+        
+        # Forest 2
+        for x in range(120, 140):
+            for y in range(150, 180):
+                if (x * y) % 5 != 0:  # Different pattern
+                    self.set_tile(x, y, TileType.TREE)
+        
+        # Add mountain ranges (rocks)
+        # Mountain 1
+        for x in range(80, 100):
+            for y in range(80, 100):
+                if (x + y) % 4 != 0:
+                    self.set_tile(x, y, TileType.ROCK)
+        
+        # Mountain 2
+        for x in range(200, 230):
+            for y in range(50, 70):
+                if (x * y) % 6 != 0:
+                    self.set_tile(x, y, TileType.ROCK)
+        
+        # Add some paths (clear areas in forests)
+        for x in range(60, 90):
+            self.set_tile(x, 50, TileType.GRASS)
+        
+        for y in range(40, 60):
+            self.set_tile(75, y, TileType.GRASS)
+        
+        # Add some individual landmarks
+        self.set_tile(10, 10, TileType.ROCK)  # Starting area landmark
+        self.set_tile(11, 10, TileType.TREE)
+        self.set_tile(10, 11, TileType.TREE)
+        
+        # Add some random elements throughout the map
+        import random
+        random.seed(42)  # For reproducibility
+        
+        # Random trees
+        for _ in range(500):
+            x = random.randint(0, self.width - 1)
+            y = random.randint(0, self.height - 1)
+            if self.get_tile(x, y).tile_type == TileType.GRASS:
                 self.set_tile(x, y, TileType.TREE)
         
-        # Add some rocks
-        for x in range(18, 20):
-            for y in range(12, 14):
+        # Random rocks
+        for _ in range(300):
+            x = random.randint(0, self.width - 1)
+            y = random.randint(0, self.height - 1)
+            if self.get_tile(x, y).tile_type == TileType.GRASS:
                 self.set_tile(x, y, TileType.ROCK)
         
-        # Add some individual obstacles
-        self.set_tile(3, 3, TileType.ROCK)
-        self.set_tile(4, 7, TileType.TREE)
-        self.set_tile(10, 15, TileType.WATER)
-        self.set_tile(15, 10, TileType.TREE)
+        # Random small ponds
+        for _ in range(50):
+            center_x = random.randint(10, self.width - 10)
+            center_y = random.randint(10, self.height - 10)
+            size = random.randint(1, 3)
+            for dx in range(-size, size + 1):
+                for dy in range(-size, size + 1):
+                    if dx*dx + dy*dy <= size*size:  # Circular shape
+                        x, y = center_x + dx, center_y + dy
+                        if 0 <= x < self.width and 0 <= y < self.height:
+                            if self.get_tile(x, y).tile_type == TileType.GRASS:
+                                self.set_tile(x, y, TileType.WATER)

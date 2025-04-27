@@ -37,3 +37,6 @@ logs/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Course materials
+lessons/

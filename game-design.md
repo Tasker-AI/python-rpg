@@ -11,26 +11,39 @@ A simple top-down RPG where the player controls a hero who must explore a small 
 - Experience and leveling system
 
 ### Game World
-- Tile-based grid map (using 2D lists/arrays)
-- Each tile is 32x32 pixels, matching the size of the player character
-- Player can only occupy one tile at a time
-- Multiple map areas, each with different terrain types (grass, water, forest, mountains)
-- NPCs and shops in towns
-- Enemies in wilderness areas
-- Hidden treasure and items
+- The game world is represented as a tile-based map (32x32 pixel tiles)
+- The map is 250x200 tiles (8000x6400 pixels), providing a large area for exploration
+- Different terrain types (grass, water, trees, rocks, etc.) with varying walkability
+- Multiple distinct areas (towns, dungeons, forests, etc.)
+- NPCs with dialogue and quests
 - Collision detection for impassable terrain and objects
+- Player character always centered on screen with the map scrolling around them
 
 ### Game Mechanics
 1. **Movement**: Tile-based movement system
-   - Click to move the player to a tile on the map
-   - Each tile of movement takes exactly 1 game tick (0.6 seconds)
-   - Pathfinding algorithm finds the shortest path to the clicked tile
-   - Player can move diagonally if no obstacles block the diagonal movement
-   - Movement path is visually displayed to the player
+   - Click on a tile to show a visual indicator and queue movement
+   - Movement only occurs on game ticks (every 0.6 seconds)
+   - Multiple clicks queue up with only the most recent being processed
+   - A* pathfinding to find optimal path
+   - Each tile movement takes one game tick (0.6 seconds)
+   - Diagonal movement allowed when no obstacles block the way
+   - Visual feedback shows where clicks occur
+   - Player character remains centered on screen at all times
+   - Map scrolls to follow player movement
 2. **User Interface**: All interactions are mouse-based
-   - Buttons for accessing menu, inventory, skills, etc.
-   - Click on NPCs to interact with them
-   - Click on objects to interact with them
+   - Mouse-only controls (no keyboard input)
+   - Click to move, click buttons for actions
+   - Visual indicators show where clicks occur
+   - Actions queue up and execute on game ticks
+   - Minimalist UI with clear feedback
+   - Health, stats, and inventory displays
+3. **Input System**
+   - Mouse-only controls
+   - Click to show indicator and queue movement
+   - Visual feedback for all clicks
+   - Tick-based action processing (0.6 seconds per tick)
+   - Click on objects to interact
+   - Click on UI buttons for menus and actions
    - Click on enemies to attack them
 3. **Combat**: Game tick based combat system
    - Each game tick is exactly 0.6 seconds
@@ -60,11 +73,12 @@ A simple top-down RPG where the player controls a hero who must explore a small 
 - Experience and level-up calculations
 
 #### Map System
-- 2D list to represent the game world
-- Each cell is a 32x32 pixel tile containing information about terrain and objects
-- Tiles can be walkable or unwalkable
-- Pathfinding algorithm (A* or similar) to find optimal paths
-- Collision detection for impassable terrain and objects
+- Tile-based map with 32x32 pixel tiles
+- Different terrain types with varying properties (walkable, blocking)
+- A* pathfinding algorithm for player movement
+- Map scrolling with player always centered on screen
+- Optimized rendering that only draws visible tiles (with buffer for smooth scrolling)
+- Map transitions between different areas
 
 #### Combat System
 - Turn-based combat using while loops and conditionals
@@ -80,6 +94,20 @@ A simple top-down RPG where the player controls a hero who must explore a small 
 - Display text using Pygame text rendering
 - Multiple-choice responses using keyboard input
 - Shop inventory and buying/selling mechanics
+
+## Technical Architecture
+
+### Engine Components
+- Game State Management: Controls different game states (menu, play, etc.)
+- Asset Management: Loads and caches images, sounds, and other assets
+- Input Handling: Processes mouse input for movement and UI interaction
+- Logging System: Comprehensive logging for debugging and diagnostics
+
+### Development Tools
+- Python 3.x with Pygame library
+- Git for version control
+- Unit testing framework for game logic
+- Detailed logging system with file and console output
 
 ## Development Phases
 
