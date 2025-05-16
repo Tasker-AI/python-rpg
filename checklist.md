@@ -89,11 +89,11 @@
 - [ ] Add quest UI elements
 
 ## Save/Load System
-- [ ] Design save file format
-- [ ] Implement automatic saving every game tick
+- [x] Design save file format
+- [x] Implement automatic saving every game tick
 - [ ] Create character selection screen
 - [ ] Add character creation functionality
-- [ ] Implement save file loading
+- [x] Implement save file loading
 
 ## Debugging
 - [x] Implement comprehensive logging system

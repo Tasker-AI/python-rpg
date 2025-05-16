@@ -26,14 +26,32 @@ class GameState:
 
 
 class GameStateManager:
-    """Manages different game states and transitions between them"""
+    """Manages different game states"""
+    
+    _instance = None
+    
+    @classmethod
+    def instance(cls):
+        """Get the singleton instance of GameStateManager"""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+    
     def __init__(self):
         self.states = {}
         self.current_state = None
         
+        # Set this instance as the singleton instance
+        GameStateManager._instance = self
+        
     def add_state(self, state_name, state):
-        """Add a state to the state manager."""
+        """Add a state to the manager"""
         self.states[state_name] = state
+        state.manager = self
+        
+    def get_state(self, state_name):
+        """Get a state by name"""
+        return self.states.get(state_name)
         
     def change_state(self, state_name):
         """Change to a different state."""
@@ -53,8 +71,10 @@ class GameStateManager:
             current.update(delta_time)
             
             # Check if state is done and needs to transition
-            if current.done:
-                self.change_state(current.next_state)
+            if current.done and current.next_state:
+                next_state_name = current.next_state
+                current.done = False  # Reset done flag to prevent infinite transitions
+                self.change_state(next_state_name)
         
     def draw(self, screen):
         """Draw current state to the screen."""

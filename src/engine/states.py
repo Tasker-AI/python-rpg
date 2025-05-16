@@ -1,6 +1,7 @@
 import pygame
 from src.engine.game_state import GameState
 from src.engine.asset_manager import AssetManager
+from src.engine.save_manager import SaveManager
 from src.game.tilemap import TileMap, TileType
 from src.game.player import Player
 from src.engine.logger import game_logger
@@ -43,14 +44,20 @@ class MenuState(GameState):
 
 class PlayState(GameState):
     """Main gameplay state"""
+    
     def __init__(self, asset_manager):
         super().__init__()
-        self.next_state = "menu"
+        self.next_state = "character_select"  # Will return to character select only when explicitly done
         
         # Game tick system
         self.tick_rate = 0.6  # seconds per tick
         self.tick_timer = 0
         self.game_ticks = 0
+        self.last_tick_time = 0
+        self.tick_interval = 600  # milliseconds
+        
+        # Save manager will be set when entering from character select
+        self.save_manager = None
         
         # Player reference (will be created in enter_state)
         self.player = None
@@ -80,7 +87,7 @@ class PlayState(GameState):
         self.tile_size = 32
         self.tilemap = TileMap(self.map_width, self.map_height, self.tile_size)
         self.tilemap.set_asset_manager(self.asset_manager)
-        self.tilemap.create_test_map()  # Create a large test map with various terrain
+        # Map will be created in enter_state based on save data
         
         # Camera position (top-left corner of the view)
         self.target_camera_x = 0
@@ -94,21 +101,73 @@ class PlayState(GameState):
         # UI elements
         self.menu_button = pygame.Rect(700, 550, 80, 30)
         
+        # Save state
+        self.save_loaded = False
+        self.auto_save_interval = 10  # Save every 10 game ticks
+        self.last_save_tick = 0
+        
     def enter_state(self):
         """Called when state becomes active"""
-        game_logger.log_game_state("PlayState", "entering")
+        game_logger.info("Game state entering: PlayState")
         
         # Load assets
         self.asset_manager.load_image("player", "player.png")
         self.asset_manager.load_image("grass", "grass.png")
         self.asset_manager.load_image("water", "water.png")
-        self.asset_manager.load_image("tree", "tree.png")
-        self.asset_manager.load_image("rock", "rock.png")
+        # Load tree and rock with transparency (colorkey=-1 uses the top-left pixel color as transparent)
+        self.asset_manager.load_image("tree", "tree.png", colorkey=-1)
+        self.asset_manager.load_image("rock", "rock.png", colorkey=-1)
         
-        # Initialize player if not already created
-        if self.player is None:
-            # Start at position (10, 10) which should be on grass, with some landmarks nearby
-            self.player = Player(10, 10, self.tilemap, self.asset_manager)
+        # Always reset the player when entering the state
+        self.player = None
+        
+        # Create the map first - it's shared between all characters
+        self.tilemap.create_test_map()
+        
+        # Ensure save_manager is set
+        if not self.save_manager:
+            game_logger.error("SaveManager not set in PlayState! Creating a new one.")
+            from src.engine.save_manager import SaveManager
+            self.save_manager = SaveManager()
+        
+        game_logger.info(f"Using character: {self.save_manager.character_name}")
+        
+        # Check for world save file first (contains game ticks)
+        world_save = self.save_manager.load_world_save()
+        if world_save:
+            # Load game ticks from world save
+            self.game_ticks = world_save.get('game_ticks', 0)
+            game_logger.info(f"Loaded world state with game ticks: {self.game_ticks}")
+            
+            # TODO: In the future, load modified tiles from world save
+            # Currently we just use the default test map
+        
+        # Now check for character save file
+        character_save = self.save_manager.load_character_save()
+        if character_save:
+            # Load player position from character save
+            grid_position = character_save.get('grid_position', (10, 10))
+            grid_x, grid_y = grid_position
+            
+            # Create player at saved position
+            self.player = Player(grid_x, grid_y, self.tilemap, self.asset_manager)
+            game_logger.info(f"Loaded character at position ({grid_x}, {grid_y}) from save file")
+            return
+        
+        # If we get here, either there is no character save file or loading failed
+        self.create_new_game()
+    
+    def create_new_game(self):
+        """Create a new game with default settings"""
+        # Create a test map
+        self.tilemap.create_test_map()
+        
+        # Initialize player at default position
+        self.player = Player(10, 10, self.tilemap, self.asset_manager)
+        game_logger.info("Created new game with default settings")
+        
+        # Create a new save file
+        self.save_manager.create_new_save()
     
     def handle_events(self, events):
         for event in events:
@@ -220,6 +279,16 @@ class PlayState(GameState):
             # Debug: Log player position after tick
             if self.player and not self.player.moving and len(self.player.movement_queue) == 0:
                 game_logger.info(f"Player final position: Tile ({self.player.grid_x}, {self.player.grid_y}), Pixel ({self.player.x}, {self.player.y})")
+            
+            # Save game state automatically on every tick
+            if self.player:
+                # Collect character and world states separately
+                character_state, world_state = self.save_manager.collect_game_states(self.player, self.tilemap, self.game_ticks)
+                # Save both states
+                self.save_manager.save_game_state(character_state, world_state, self.game_ticks)
+                # Only log save messages every 10 ticks to avoid log spam
+                if self.game_ticks % 10 == 0:
+                    game_logger.info(f"Auto-saved game at tick {self.game_ticks}")
         
         # Update player
         self.player.update(delta_time, tick_occurred)
@@ -263,8 +332,8 @@ class PlayState(GameState):
             self.camera_y = max(0, min(self.camera_y, map_pixel_height - screen_height))
     
     def draw(self, screen):
-        # Draw game world
-        self.tilemap.draw(screen, self.camera_x, self.camera_y)
+        # Draw base tiles (grass, water, sand)
+        self.tilemap.draw_base_tiles(screen, self.camera_x, self.camera_y)
         
         # Draw click indicators
         for x, y, time_remaining in self.click_indicators:
@@ -292,6 +361,9 @@ class PlayState(GameState):
         
         # Draw player
         self.player.draw(screen, self.camera_x, self.camera_y)
+        
+        # Draw resources (trees, rocks) above player
+        self.tilemap.draw_resources(screen, self.camera_x, self.camera_y)
         
         # Draw UI
         # Menu button

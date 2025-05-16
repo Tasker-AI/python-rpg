@@ -152,35 +152,29 @@ class TileMap:
             print(f"Error saving map to {filename}: {e}")
             return False
     
-    def draw(self, screen, camera_x=0, camera_y=0):
-        """Draw the tilemap to the screen, optimized to only render visible tiles"""
+    def draw_base_tiles(self, screen, camera_x, camera_y):
+        """Draw the base tiles (grass, water, sand) to the screen."""
         if not self.asset_manager:
-            print("Warning: Asset manager not set for tilemap")
+            game_logger.error("Asset manager not set for tilemap")
             return
             
-        # Calculate visible range of tiles with a small buffer for smooth scrolling
+        # Get screen dimensions
         screen_width, screen_height = screen.get_size()
-        buffer = 2  # Extra tiles to render beyond visible area
         
-        # Convert to integers to avoid 'float cannot be interpreted as integer' error
-        start_x = max(0, int(camera_x // self.tile_size) - buffer)
-        end_x = min(self.width, int((camera_x + screen_width) // self.tile_size) + buffer)
-        start_y = max(0, int(camera_y // self.tile_size) - buffer)
-        end_y = min(self.height, int((camera_y + screen_height) // self.tile_size) + buffer)
+        # Calculate visible tile range (with buffer for smoother scrolling)
+        buffer_tiles = 2  # Extra tiles to render beyond screen edges
+        start_x = max(0, int(camera_x // self.tile_size) - buffer_tiles)
+        start_y = max(0, int(camera_y // self.tile_size) - buffer_tiles)
+        end_x = min(self.width, int((camera_x + screen_width) // self.tile_size) + buffer_tiles + 1)
+        end_y = min(self.height, int((camera_y + screen_height) // self.tile_size) + buffer_tiles + 1)
         
-        game_logger.debug(f"Drawing tiles from ({start_x}, {start_y}) to ({end_x}, {end_y})")
-        
-        # Track statistics for debugging
-        tiles_drawn = 0
-        total_tiles = self.width * self.height
+        game_logger.debug(f"Drawing base tiles from ({start_x}, {start_y}) to ({end_x}, {end_y})")
         
         # Pre-fetch commonly used images
         grass_img = self.asset_manager.get_image("grass")
         water_img = self.asset_manager.get_image("water")
-        tree_img = self.asset_manager.get_image("tree")
-        rock_img = self.asset_manager.get_image("rock")
         
-        # Draw visible tiles
+        # Draw visible base tiles
         for x in range(start_x, end_x):
             for y in range(start_y, end_y):
                 tile = self.tiles[x][y]
@@ -192,30 +186,64 @@ class TileMap:
                     pixel_y + self.tile_size < 0 or pixel_y > screen_height):
                     continue
                 
-                tiles_drawn += 1
-                
-                # Draw tile based on type
+                # Draw base tile
                 if tile.tile_type == TileType.EMPTY:
                     pygame.draw.rect(screen, (0, 0, 0), (pixel_x, pixel_y, self.tile_size, self.tile_size))
-                elif tile.tile_type == TileType.GRASS:
+                elif tile.tile_type == TileType.GRASS or tile.tile_type == TileType.TREE or tile.tile_type == TileType.ROCK:
+                    # Draw grass for grass tiles and as the base for tree and rock tiles
                     screen.blit(grass_img, (pixel_x, pixel_y))
                 elif tile.tile_type == TileType.WATER:
                     screen.blit(water_img, (pixel_x, pixel_y))
-                elif tile.tile_type == TileType.TREE:
-                    # Draw grass underneath tree
-                    screen.blit(grass_img, (pixel_x, pixel_y))
-                    # Draw tree on top
-                    screen.blit(tree_img, (pixel_x, pixel_y - self.tile_size))  # Tree is taller
-                elif tile.tile_type == TileType.ROCK:
-                    # Draw grass underneath rock
-                    screen.blit(grass_img, (pixel_x, pixel_y))
-                    # Draw rock on top
-                    screen.blit(rock_img, (pixel_x, pixel_y))
                 elif tile.tile_type == TileType.SAND:
                     pygame.draw.rect(screen, (240, 230, 140), (pixel_x, pixel_y, self.tile_size, self.tile_size))
+    
+    def draw_resources(self, screen, camera_x, camera_y):
+        """Draw resource objects (trees, rocks) that should appear above the player."""
+        if not self.asset_manager:
+            game_logger.error("Asset manager not set for tilemap")
+            return
+            
+        # Get screen dimensions
+        screen_width, screen_height = screen.get_size()
         
-        # Print rendering statistics (uncomment for debugging)
-        # print(f"Rendered {tiles_drawn} of {total_tiles} tiles ({tiles_drawn/total_tiles*100:.2f}%)")
+        # Calculate visible tile range (with buffer for smoother scrolling)
+        buffer_tiles = 2  # Extra tiles to render beyond screen edges
+        start_x = max(0, int(camera_x // self.tile_size) - buffer_tiles)
+        start_y = max(0, int(camera_y // self.tile_size) - buffer_tiles)
+        end_x = min(self.width, int((camera_x + screen_width) // self.tile_size) + buffer_tiles + 1)
+        end_y = min(self.height, int((camera_y + screen_height) // self.tile_size) + buffer_tiles + 1)
+        
+        game_logger.debug(f"Drawing resources from ({start_x}, {start_y}) to ({end_x}, {end_y})")
+        
+        # Pre-fetch commonly used images
+        tree_img = self.asset_manager.get_image("tree")
+        rock_img = self.asset_manager.get_image("rock")
+        
+        # Draw visible resource objects
+        for x in range(start_x, end_x):
+            for y in range(start_y, end_y):
+                tile = self.tiles[x][y]
+                pixel_x = x * self.tile_size - camera_x
+                pixel_y = y * self.tile_size - camera_y
+                
+                # Skip rendering if completely outside the screen
+                if (pixel_x + self.tile_size < 0 or pixel_x > screen_width or
+                    pixel_y + self.tile_size < 0 or pixel_y > screen_height):
+                    continue
+                
+                # Draw resource objects
+                if tile.tile_type == TileType.TREE:
+                    # Draw tree on top of grass
+                    screen.blit(tree_img, (pixel_x, pixel_y - self.tile_size))  # Tree is taller
+                elif tile.tile_type == TileType.ROCK:
+                    # Draw rock on top of grass
+                    screen.blit(rock_img, (pixel_x, pixel_y))
+    
+    def draw(self, screen, camera_x, camera_y):
+        """Draw the visible portion of the tilemap to the screen."""
+        # This is now a wrapper that calls the base tiles drawing method
+        # The resources will be drawn separately after the player
+        self.draw_base_tiles(screen, camera_x, camera_y)
     
     def find_path(self, start_x, start_y, end_x, end_y):
         """

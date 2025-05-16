@@ -4,8 +4,10 @@ import os
 from datetime import datetime
 from src.engine.game_state import GameStateManager
 from src.engine.states import MenuState, PlayState
+from src.engine.character_select import CharacterSelectState
 from src.engine.logger import game_logger
 from src.engine.click_simulator import click_simulator
+from src.engine.save_manager import SaveManager
 
 # Initialize pygame
 pygame.init()
@@ -15,10 +17,11 @@ os.makedirs('logs', exist_ok=True)
 game_logger.info("Starting game")
 
 # Game constants
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 800  # Default width
+SCREEN_HEIGHT = 600  # Default height
 FPS = 60
 TICK_RATE = 0.6  # seconds per game tick
+FULLSCREEN = False  # Start in windowed mode by default
 
 # Colors - RGB values
 BLACK = (0, 0, 0)
@@ -28,9 +31,18 @@ GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 
 # Game setup code
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+# Set resizable flag for the window
+flags = pygame.RESIZABLE
+if FULLSCREEN:
+    flags |= pygame.FULLSCREEN
+    # Get the current display info to set fullscreen resolution
+    display_info = pygame.display.Info()
+    SCREEN_WIDTH = display_info.current_w
+    SCREEN_HEIGHT = display_info.current_h
+
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags)
 pygame.display.set_caption("Python RPG")
-game_logger.info(f"Screen initialized: {SCREEN_WIDTH}x{SCREEN_HEIGHT}")
+game_logger.info(f"Screen initialized: {SCREEN_WIDTH}x{SCREEN_HEIGHT}, Fullscreen: {FULLSCREEN}")
 
 # Create a clock for tracking delta time
 clock = pygame.time.Clock()
@@ -45,12 +57,20 @@ state_manager = GameStateManager()
 from src.engine.asset_manager import AssetManager
 asset_manager = AssetManager()
 
+# Create save manager
+save_manager = SaveManager()
+
 # Add states
 state_manager.add_state("menu", MenuState())
-state_manager.add_state("play", PlayState(asset_manager))
+state_manager.add_state("character_select", CharacterSelectState(asset_manager, save_manager))
+
+# Create PlayState with asset manager and save manager
+play_state = PlayState(asset_manager)
+play_state.save_manager = save_manager  # Set save manager directly
+state_manager.add_state("play", play_state)
 
 # Set initial state
-state_manager.change_state("play")
+state_manager.change_state("character_select")
 
 # Start click simulator
 click_simulator.start()
@@ -76,7 +96,46 @@ while running:
     for event in events:
         if event.type == pygame.QUIT:
             game_logger.info("Game quit requested")
+            # Force a final save before quitting
+            if isinstance(state_manager.current_state, PlayState):
+                play_state = state_manager.current_state
+                if hasattr(play_state, 'save_manager') and play_state.player:
+                    game_logger.info("Performing final save before exit")
+                    # Collect character and world states separately
+                    character_state, world_state = play_state.save_manager.collect_game_states(
+                        play_state.player, play_state.tilemap, play_state.game_ticks)
+                    # Save both states
+                    play_state.save_manager.save_game_state(character_state, world_state, play_state.game_ticks)
+                    game_logger.info("Final save complete")
             running = False
+        
+        # Handle window resize events
+        elif event.type == pygame.VIDEORESIZE:
+            SCREEN_WIDTH, SCREEN_HEIGHT = event.size
+            screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+            game_logger.info(f"Window resized to {SCREEN_WIDTH}x{SCREEN_HEIGHT}")
+        
+        # Toggle fullscreen with F11 key
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_F11:
+                FULLSCREEN = not FULLSCREEN
+                if FULLSCREEN:
+                    # Save window size before going fullscreen
+                    window_size = screen.get_size()
+                    # Switch to fullscreen
+                    display_info = pygame.display.Info()
+                    screen = pygame.display.set_mode((display_info.current_w, display_info.current_h), 
+                                                    pygame.FULLSCREEN)
+                    game_logger.info(f"Switched to fullscreen: {display_info.current_w}x{display_info.current_h}")
+                else:
+                    # Return to windowed mode with previous size
+                    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+                    game_logger.info(f"Switched to windowed mode: {SCREEN_WIDTH}x{SCREEN_HEIGHT}")
+            # Allow escape key to exit fullscreen
+            elif event.key == pygame.K_ESCAPE and FULLSCREEN:
+                FULLSCREEN = False
+                screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+                game_logger.info(f"Exited fullscreen with Escape key: {SCREEN_WIDTH}x{SCREEN_HEIGHT}")
     
     # Pass events to current state
     state_manager.handle_events(events)

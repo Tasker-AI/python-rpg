@@ -18,6 +18,8 @@ A simple top-down RPG where the player controls a hero who must explore a small 
 - NPCs with dialogue and quests
 - Collision detection for impassable terrain and objects
 - Player character always centered on screen with the map scrolling around them
+- All resource images (trees, rocks, etc.) must have transparent backgrounds using colorkey=-1 (top-left pixel color)
+- Resources should have a high Z-index to ensure they appear above the player character
 
 ### Game Mechanics
 1. **Movement**: Tile-based movement system
@@ -133,3 +135,4 @@ A simple top-down RPG where the player controls a hero who must explore a small 
 3. Implement player movement and map rendering
 4. Build the inventory and combat systems
 5. Add content and test gameplay
+
