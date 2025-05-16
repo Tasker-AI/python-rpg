@@ -2,6 +2,7 @@ import pygame
 import math
 from collections import deque
 from src.engine.logger import game_logger
+from src.entities.player.human_sprite import HumanSprite
 
 class Player:
     """
@@ -48,6 +49,9 @@ class Player:
         self.attack = 10
         self.defense = 5
         
+        # Combat state
+        self.in_combat = False  # Only show health bar when in combat
+        
         # Skills
         self.skills = {
             "woodcutting": 1,
@@ -66,6 +70,11 @@ class Player:
         
         # Assets
         self.asset_manager = asset_manager
+        
+        # Create human sprite renderer
+        self.sprite = HumanSprite(color=(0, 0, 255))  # Blue clothing
+        
+        # Keep old image reference for compatibility
         self.image = asset_manager.get_image("player")
         if not self.image:  # If image not loaded yet
             self.image = asset_manager.load_image("player", "player.png")
@@ -232,6 +241,23 @@ class Player:
     
     def update(self, delta_time, tick_occurred=False):
         """Update player position and state."""
+        # Determine direction based on movement
+        direction = None
+        if self.next_grid_x is not None and self.next_grid_y is not None:
+            # Calculate direction based on movement
+            dx = self.next_grid_x - self.grid_x
+            dy = self.next_grid_y - self.grid_y
+            
+            if abs(dx) > abs(dy):
+                # Moving horizontally
+                direction = 3 if dx > 0 else 1  # Right or Left
+            else:
+                # Moving vertically
+                direction = 2 if dy < 0 else 0  # Up or Down
+        
+        # Update sprite animation
+        self.sprite.update(delta_time, self.moving, direction)
+        
         # Handle movement state
         if self.moving:
             if tick_occurred and self.next_grid_x is not None and self.next_grid_y is not None:
@@ -314,21 +340,22 @@ class Player:
                 pygame.draw.circle(screen, (255, 255, 0), 
                                  (x2 - camera_x, y2 - camera_y), 3)
         
-        # Draw player sprite
-        screen.blit(self.image, (self.x - 16 - camera_x, self.y - 16 - camera_y))
+        # Draw human sprite
+        self.sprite.draw(screen, self.x - camera_x, self.y - camera_y)
         
-        # Draw health bar above player
-        health_percent = self.health / self.max_health
-        bar_width = 32
-        bar_height = 5
-        
-        # Background (gray)
-        pygame.draw.rect(screen, (100, 100, 100), 
-                        (self.x - 16 - camera_x, self.y - 25 - camera_y, bar_width, bar_height))
-        
-        # Health (red)
-        pygame.draw.rect(screen, (200, 0, 0), 
-                        (self.x - 16 - camera_x, self.y - 25 - camera_y, int(bar_width * health_percent), bar_height))
+        # Only draw health bar when in combat
+        if self.in_combat:
+            health_percent = self.health / self.max_health
+            bar_width = 32
+            bar_height = 5
+            
+            # Background (gray)
+            pygame.draw.rect(screen, (100, 100, 100), 
+                            (self.x - 16 - camera_x, self.y - 32 - camera_y, bar_width, bar_height))
+            
+            # Health (red)
+            pygame.draw.rect(screen, (200, 0, 0), 
+                            (self.x - 16 - camera_x, self.y - 32 - camera_y, int(bar_width * health_percent), bar_height))
     
     def gain_experience(self, amount):
         """Add experience and check for level up."""
@@ -358,11 +385,18 @@ class Player:
         actual_damage = max(1, amount - self.defense // 2)
         self.health -= actual_damage
         
+        # Set player in combat state when taking damage
+        self.in_combat = True
+        
         if self.health <= 0:
             self.health = 0
             self.die()
             
         return actual_damage
+        
+    def end_combat(self):
+        """End combat state, hiding the health bar."""
+        self.in_combat = False
     
     def heal(self, amount):
         """Heal the player."""

@@ -2,8 +2,9 @@ import pygame
 from src.engine.game_state import GameState
 from src.engine.asset_manager import AssetManager
 from src.engine.save_manager import SaveManager
-from src.game.tilemap import TileMap, TileType
-from src.game.player import Player
+from src.maps.tilemap import TileMap, TileType
+from src.entities.player.player import Player
+from src.ui.inventory_tab import InventoryUI
 from src.engine.logger import game_logger
 
 class MenuState(GameState):
@@ -98,8 +99,14 @@ class PlayState(GameState):
         # Player (starts at grid position 5,5)
         self.player = None  # Will be initialized in enter_state
         
-        # UI elements
-        self.menu_button = pygame.Rect(700, 550, 80, 30)
+        # Inventory UI
+        screen_width, screen_height = pygame.display.get_surface().get_size()
+        self.inventory_ui = InventoryUI(screen_width, screen_height)
+        self.show_inventory = True  # Show inventory by default
+        
+        # Key bindings
+        self.inventory_key = pygame.K_i  # Press 'I' to toggle inventory
+        self.return_key = pygame.K_ESCAPE  # Press 'ESC' to return to character select
         
         # Save state
         self.save_loaded = False
@@ -199,63 +206,83 @@ class PlayState(GameState):
                     test_tile_x, test_tile_y = 5, 5
                     game_logger.info(f"TEST 2: Moving player to tile ({test_tile_x}, {test_tile_y})")
                     self.player.queue_movement(test_tile_x, test_tile_y)
+                    
+                elif event.key == self.return_key:
+                    # Return to character select
+                    self.done = True
+                    self.next_state = "character_select"
+                    game_logger.info("Returning to character select")
+                    
+                elif event.key == self.inventory_key:
+                    # Toggle inventory with I key
+                    self.show_inventory = not self.show_inventory
+                    game_logger.info(f"Inventory toggled with keyboard: {self.show_inventory}")
             
             if event.type == pygame.MOUSEBUTTONDOWN:
                 # Log mouse event
                 game_logger.log_mouse_event("BUTTONDOWN", event.pos, event.button)
                 
-                # Check if menu button was clicked
-                if self.menu_button.collidepoint(event.pos):
-                    game_logger.info("Menu button clicked")
-                    self.done = True  # Return to menu
+                # If inventory is shown, check if click was handled by inventory UI
+                if self.show_inventory:
+                    result = self.inventory_ui.handle_click(event.pos)
+                    if result == "return_to_character_select":
+                        # Return to character select screen
+                        game_logger.info("Returning to character select from settings")
+                        self.done = True
+                        self.next_state = "character_select"
+                        return
+                    elif result:  # Any other truthy result means the click was handled
+                        game_logger.info("Inventory UI interaction")
+                        return
+                
+                # Process character movement regardless of inventory state
+                # Convert screen coordinates to world coordinates
+                # Since player is always centered, the clicked position is relative to player
+                screen_width, screen_height = pygame.display.get_surface().get_size()
+                screen_center_x, screen_center_y = screen_width // 2, screen_height // 2
+                
+                # Calculate offset from center (player position)
+                offset_x = event.pos[0] - screen_center_x
+                offset_y = event.pos[1] - screen_center_y
+                
+                # Apply offset to player's world position
+                world_x = self.player.x + offset_x
+                world_y = self.player.y + offset_y
+                
+                # Log click coordinates
+                game_logger.debug(f"Click at screen pos: {event.pos}, screen center: ({screen_center_x}, {screen_center_y})")
+                game_logger.debug(f"Offset: ({offset_x}, {offset_y}), World pos: ({world_x}, {world_y})")
+                
+                # Convert to tile coordinates
+                # Use floor division to ensure we get the correct tile
+                tile_x = int(world_x // self.tile_size)
+                tile_y = int(world_y // self.tile_size)
+                game_logger.debug(f"Target tile: ({tile_x}, {tile_y})")
+                
+                # Calculate the center pixel coordinates of the target tile for verification
+                center_x, center_y = self.tilemap.grid_to_pixel(tile_x, tile_y)
+                game_logger.debug(f"Target tile center: ({center_x}, {center_y})")
+                
+                # Check if the target tile is valid
+                if 0 <= tile_x < self.map_width and 0 <= tile_y < self.map_height:
+                    tile_type = self.tilemap.get_tile(tile_x, tile_y).tile_type
+                    game_logger.debug(f"Target tile type: {tile_type}, walkable: {self.tilemap.is_walkable(tile_x, tile_y)}")
+                    
+                    # Add click indicator that will display for 2 seconds
+                    indicator_x = tile_x * self.tile_size
+                    indicator_y = tile_y * self.tile_size
+                    self.click_indicators.append((indicator_x, indicator_y, 2.0))
+                    game_logger.debug(f"Added click indicator at tile ({tile_x}, {tile_y})")
+                    
+                    # Queue up the movement to be processed on next tick
+                    player_tile_x = int(self.player.x // self.tile_size)
+                    player_tile_y = int(self.player.y // self.tile_size)
+                    game_logger.log_player_movement((player_tile_x, player_tile_y), (tile_x, tile_y))
+                    
+                    # Queue the movement without starting it immediately
+                    self.player.queue_movement(tile_x, tile_y)
                 else:
-                    # Convert screen coordinates to world coordinates
-                    # Since player is always centered, the clicked position is relative to player
-                    screen_width, screen_height = pygame.display.get_surface().get_size()
-                    screen_center_x, screen_center_y = screen_width // 2, screen_height // 2
-                    
-                    # Calculate offset from center (player position)
-                    offset_x = event.pos[0] - screen_center_x
-                    offset_y = event.pos[1] - screen_center_y
-                    
-                    # Apply offset to player's world position
-                    world_x = self.player.x + offset_x
-                    world_y = self.player.y + offset_y
-                    
-                    # Log click coordinates
-                    game_logger.debug(f"Click at screen pos: {event.pos}, screen center: ({screen_center_x}, {screen_center_y})")
-                    game_logger.debug(f"Offset: ({offset_x}, {offset_y}), World pos: ({world_x}, {world_y})")
-                    
-                    # Convert to tile coordinates
-                    # Use floor division to ensure we get the correct tile
-                    tile_x = int(world_x // self.tile_size)
-                    tile_y = int(world_y // self.tile_size)
-                    game_logger.debug(f"Target tile: ({tile_x}, {tile_y})")
-                    
-                    # Calculate the center pixel coordinates of the target tile for verification
-                    center_x, center_y = self.tilemap.grid_to_pixel(tile_x, tile_y)
-                    game_logger.debug(f"Target tile center: ({center_x}, {center_y})")
-                    
-                    # Check if the target tile is valid
-                    if 0 <= tile_x < self.map_width and 0 <= tile_y < self.map_height:
-                        tile_type = self.tilemap.get_tile(tile_x, tile_y).tile_type
-                        game_logger.debug(f"Target tile type: {tile_type}, walkable: {self.tilemap.is_walkable(tile_x, tile_y)}")
-                        
-                        # Add click indicator that will display for 2 seconds
-                        indicator_x = tile_x * self.tile_size
-                        indicator_y = tile_y * self.tile_size
-                        self.click_indicators.append((indicator_x, indicator_y, 2.0))
-                        game_logger.debug(f"Added click indicator at tile ({tile_x}, {tile_y})")
-                        
-                        # Queue up the movement to be processed on next tick
-                        player_tile_x = int(self.player.x // self.tile_size)
-                        player_tile_y = int(self.player.y // self.tile_size)
-                        game_logger.log_player_movement((player_tile_x, player_tile_y), (tile_x, tile_y))
-                        
-                        # Queue the movement without starting it immediately
-                        self.player.queue_movement(tile_x, tile_y)
-                    else:
-                        game_logger.warning(f"Click outside map bounds: ({tile_x}, {tile_y})")
+                    game_logger.warning(f"Click outside map bounds: ({tile_x}, {tile_y})")
             
             elif event.type == pygame.MOUSEMOTION:
                 # Log mouse motion events at debug level
@@ -366,32 +393,9 @@ class PlayState(GameState):
         self.tilemap.draw_resources(screen, self.camera_x, self.camera_y)
         
         # Draw UI
-        # Menu button
-        pygame.draw.rect(screen, (100, 100, 100), self.menu_button)
-        font = pygame.font.SysFont(None, 24)
-        text = font.render("Menu", True, (255, 255, 255))
-        screen.blit(text, (self.menu_button.x + 20, self.menu_button.y + 10))
+        # Draw inventory UI if visible
+        if self.show_inventory:
+            self.inventory_ui.draw(screen)
         
-        # Game ticks
-        ticks_text = font.render(f"Ticks: {self.game_ticks}", True, (255, 255, 255))
-        screen.blit(ticks_text, (10, 40))
-        
-        # Player position
-        player_pos_text = font.render(f"Player: ({int(self.player.x // self.tile_size)}, {int(self.player.y // self.tile_size)})", True, (255, 255, 255))
-        screen.blit(player_pos_text, (10, 70))
-        
-        # Camera position
-        camera_text = font.render(f"Camera: ({int(self.camera_x)}, {int(self.camera_y)})", True, (255, 255, 255))
-        screen.blit(camera_text, (10, 100))
-        
-        # Movement queue info
-        queue_text = font.render(f"Movement Queue: {len(self.player.movement_queue)}", True, (255, 255, 255))
-        screen.blit(queue_text, (10, 130))
-        
-        # Help text
-        help_text = font.render("Click to move | Use simulator in console", True, (255, 255, 255))
-        screen.blit(help_text, (10, 160))
-        
-        # Draw debug overlay for click simulator
-        debug_text = font.render("Debug: Use 'simulator> click x y' in console", True, (255, 200, 0))
-        screen.blit(debug_text, (screen.get_width() - 350, 10))
+        # All text has been removed and will only appear in logs
+        # Game state information is still tracked internally but not displayed
