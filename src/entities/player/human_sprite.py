@@ -6,64 +6,150 @@ class HumanSprite:
     A class that renders a human-like character with separate body parts.
     """
     def __init__(self, color=(0, 0, 255)):
-        # Body part colors
-        self.body_color = color
-        self.head_color = (255, 218, 185)  # Peach color for head
-        self.feet_color = (139, 69, 19)    # Brown for feet/shoes
-        
-        # Body part sizes and positions (relative to center point)
-        self.head_radius = 6  # Smaller head radius for better proportions
-        self.body_width = 16
-        self.body_height = 20
-        self.arm_width = 6
-        self.arm_height = 16
-        self.leg_width = 6
-        self.leg_height = 14
-        self.foot_width = 8
-        self.foot_height = 4
-        
-        # Animation state
-        self.walking = False
-        self.animation_time = 0
-        self.animation_speed = 5  # Animation cycles per second
-        
-        # Direction (0=down, 1=left, 2=up, 3=right)
-        self.direction = 0
-        
-        # Create surfaces for caching the rendered sprite in each direction
-        self.cached_sprites = {
-            'standing': [None, None, None, None],  # Down, Left, Up, Right
-            'walking1': [None, None, None, None],
-            'walking2': [None, None, None, None]
-        }
-        
-        # Generate the cached sprites
-        self._generate_cached_sprites()
+        try:
+            print("Initializing HumanSprite...")
+            # Initialize rect attribute (will be updated in draw method)
+            self.rect = pygame.Rect(0, 0, 32, 32)
+            
+            # Body part colors
+            self.body_color = color
+            self.head_color = (255, 218, 185)  # Peach color for head
+            self.feet_color = (139, 69, 19)    # Brown for feet/shoes
+            
+            # Body part sizes and positions (relative to center point)
+            self.head_radius = 6  # Smaller head radius for better proportions
+            self.body_width = 16
+            self.body_height = 20
+            self.arm_width = 6
+            self.arm_height = 16
+            self.leg_width = 6
+            self.leg_height = 14
+            self.foot_width = 8
+            self.foot_height = 4
+            
+            # Animation state
+            self.walking = False
+            self.animation_time = 0
+            self.animation_speed = 5  # Animation cycles per second
+            
+            # Direction (0=down, 1=left, 2=up, 3=right)
+            self.direction = 0
+            
+            # Create surfaces for caching the rendered sprite in each direction
+            self.cached_sprites = {
+                'standing': [None, None, None, None],  # Down, Left, Up, Right
+                'walking1': [None, None, None, None],
+                'walking2': [None, None, None, None]
+            }
+            
+            # Generate the cached sprites
+            print("Generating cached sprites...")
+            self._generate_cached_sprites()
+            print("Cached sprites generated")
+            
+            # Verify all sprites were created
+            for state in ['standing', 'walking1', 'walking2']:
+                for i, sprite in enumerate(self.cached_sprites[state]):
+                    if sprite is None:
+                        print(f"Warning: {state} sprite {i} is None!")
+                    elif not hasattr(sprite, 'get_width'):
+                        print(f"Warning: {state} sprite {i} is not a valid surface!")
+                        
+        except Exception as e:
+            print(f"Error initializing HumanSprite: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     def _generate_cached_sprites(self):
-        """Generate and cache all sprite animations and directions."""
-        sprite_size = 48  # Size of the sprite surface (square)
-        center_x = sprite_size // 2
-        center_y = sprite_size // 2
+        """Generate and cache all sprite animations and directions.
         
-        # Generate standing pose for all directions
-        for direction in range(4):
-            self.direction = direction
+        This method creates surfaces for each animation state (standing, walking1, walking2)
+        in all four directions (down, left, up, right).
+        """
+        try:
+            print("Starting sprite generation...")
+            sprite_size = 48  # Size of the sprite surface (square)
             
-            # Standing pose
-            surface = pygame.Surface((sprite_size, sprite_size), pygame.SRCALPHA)
-            self._draw_human(surface, center_x, center_y, 0)  # 0 = standing
-            self.cached_sprites['standing'][direction] = surface
+            # Define poses and their corresponding states
+            poses = [
+                (0, 'standing'),
+                (1, 'walking1'),
+                (2, 'walking2')
+            ]
             
-            # Walking pose 1
-            surface = pygame.Surface((sprite_size, sprite_size), pygame.SRCALPHA)
-            self._draw_human(surface, center_x, center_y, 1)  # 1 = walking pose 1
-            self.cached_sprites['walking1'][direction] = surface
+            # Generate all poses for all directions
+            for direction in range(4):
+                try:
+                    print(f"Generating sprites for direction {direction}...")
+                    
+                    for pose_num, state in poses:
+                        try:
+                            # Create a new surface with per-pixel alpha
+                            surface = pygame.Surface((sprite_size, sprite_size), pygame.SRCALPHA)
+                            if surface is None or not hasattr(surface, 'blit'):
+                                print(f"Error: Failed to create surface for direction {direction}, {state}")
+                                continue
+                                
+                            # Clear the surface with transparent color
+                            surface.fill((0, 0, 0, 0))
+                            
+                            # Calculate center position
+                            center_x = sprite_size // 2
+                            center_y = sprite_size // 2
+                            
+                            # Draw the character in the current pose and direction
+                            self._draw_human(surface, center_x, center_y, pose_num)
+                            
+                            # Store the surface in the cache
+                            self.cached_sprites[state][direction] = surface
+                            
+                            # Verify the surface is valid
+                            if not hasattr(surface, 'get_width') or surface.get_width() == 0:
+                                print(f"Warning: Invalid surface generated for {state}, direction {direction}")
+                                
+                        except Exception as e:
+                            print(f"Error generating {state} sprite for direction {direction}: {e}")
+                            import traceback
+                            traceback.print_exc()
+                    
+                    print(f"Successfully generated sprites for direction {direction}")
+                    
+                except Exception as e:
+                    print(f"Critical error generating sprites for direction {direction}: {e}")
+                    import traceback
+                    traceback.print_exc()
             
-            # Walking pose 2
-            surface = pygame.Surface((sprite_size, sprite_size), pygame.SRCALPHA)
-            self._draw_human(surface, center_x, center_y, 2)  # 2 = walking pose 2
-            self.cached_sprites['walking2'][direction] = surface
+            # Verify all sprites were created
+            missing = []
+            for state, directions in self.cached_sprites.items():
+                for i, sprite in enumerate(directions):
+                    if sprite is None or not hasattr(sprite, 'blit'):
+                        missing.append(f"{state} direction {i}")
+            
+            if missing:
+                print(f"Warning: Failed to generate {len(missing)} sprites: {', '.join(missing)}")
+                
+                # Create fallback sprites for missing ones
+                fallback = pygame.Surface((sprite_size, sprite_size), pygame.SRCALPHA)
+                pygame.draw.rect(fallback, (255, 0, 0, 128), (0, 0, sprite_size, sprite_size))
+                font = pygame.font.Font(None, 24)
+                text = font.render('SPRITE', True, (255, 255, 255))
+                text_rect = text.get_rect(center=(sprite_size//2, sprite_size//2))
+                fallback.blit(text, text_rect)
+                
+                for state, directions in self.cached_sprites.items():
+                    for i in range(len(directions)):
+                        if directions[i] is None or not hasattr(directions[i], 'blit'):
+                            self.cached_sprites[state][i] = fallback
+                            
+            print("Sprite generation complete")
+            
+        except Exception as e:
+            print(f"Critical error in _generate_cached_sprites: {e}")
+            import traceback
+            traceback.print_exc()
+            # Try to continue with whatever sprites we could generate
     
     def _draw_human(self, surface, center_x, center_y, pose):
         """Draw a human figure with all body parts."""
@@ -422,31 +508,171 @@ class HumanSprite:
         )
         pygame.draw.rect(surface, self.feet_color, right_foot_rect, 0, 2)
     
+    def set_direction(self, direction_str):
+        """Set the sprite direction based on a string direction.
+        
+        Args:
+            direction_str: String direction ('up', 'down', 'left', 'right')
+        """
+        direction_map = {
+            'down': 0,
+            'left': 1,
+            'up': 2,
+            'right': 3
+        }
+        self.direction = direction_map.get(direction_str, 0)  # Default to down if invalid
+        
     def update(self, delta_time, is_moving=False, direction=None):
-        """Update the sprite animation."""
+        """Update the sprite animation.
+        
+        Args:
+            delta_time: Time since last update in seconds
+            is_moving: Whether the character is currently moving
+            direction: Optional direction to face (0=down, 1=left, 2=up, 3=right)
+        """
         if direction is not None:
             self.direction = direction
         
+        # Update walking state
+        was_walking = self.walking
         self.walking = is_moving
         
+        # Reset animation time when starting to walk
+        if not was_walking and self.walking:
+            self.animation_time = 0
+        
+        # Update animation time when walking
         if self.walking:
-            self.animation_time += delta_time * self.animation_speed
-            if self.animation_time > 2:  # Reset after 2 frames
-                self.animation_time = 0
+            # Update animation time based on movement speed
+            self.animation_time += delta_time * 6  # Adjust this value to control animation speed
+        
+        # Keep animation_time from getting too large
+        if self.animation_time > 1000:
+            self.animation_time = 0
     
     def get_current_frame(self):
-        """Get the current animation frame based on state."""
-        if not self.walking:
-            return self.cached_sprites['standing'][self.direction]
+        """Get the current animation frame based on state.
         
-        # Determine walking frame based on animation time
-        frame = int(self.animation_time) % 2
-        if frame == 0:
-            return self.cached_sprites['walking1'][self.direction]
-        else:
-            return self.cached_sprites['walking2'][self.direction]
-    
+        Returns:
+            pygame.Surface: A valid surface to draw
+        """
+        try:
+            # Determine which animation state to use
+            state = 'walking1' if int(self.animation_time) % 2 == 0 else 'walking2' if self.walking else 'standing'
+            
+            # Get the frame for the current direction
+            frame = self.cached_sprites[state][self.direction % 4]  # Use modulo to ensure valid index
+            
+            # If we got a valid frame, return it
+            if frame is not None and hasattr(frame, 'blit'):
+                return frame
+                
+            # Fall back to standing frame if available
+            if state != 'standing':
+                frame = self.cached_sprites['standing'][self.direction % 4]
+                if frame is not None and hasattr(frame, 'blit'):
+                    return frame
+            
+            # If we still don't have a valid frame, try to generate one
+            print(f"Warning: Missing frame for state '{state}', direction {self.direction}")
+            self._generate_cached_sprites()  # Try to regenerate sprites
+            frame = self.cached_sprites['standing'][0]  # Try to get default standing frame
+            
+            if frame is not None and hasattr(frame, 'blit'):
+                return frame
+                
+        except Exception as e:
+            print(f"Error in get_current_frame: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # As a last resort, create a default red surface
+        default_surface = pygame.Surface((48, 48), pygame.SRCALPHA)
+        pygame.draw.rect(default_surface, (255, 0, 0, 128), (0, 0, 48, 48))
+        font = pygame.font.Font(None, 24)
+        text = font.render('Sprite', True, (255, 255, 255))
+        text_rect = text.get_rect(center=(24, 24))
+        default_surface.blit(text, text_rect)
+        return default_surface
     def draw(self, surface, x, y):
-        """Draw the sprite at the specified position."""
-        current_frame = self.get_current_frame()
-        surface.blit(current_frame, (x - 24, y - 24))  # Center the 48x48 sprite
+        """
+        Draw the sprite at the specified position.
+        
+        Args:
+            surface: The pygame surface to draw on
+            x: The x-coordinate to draw at (center point)
+            y: The y-coordinate to draw at (center point)
+        """
+        try:
+            # Skip if surface is invalid
+            if not hasattr(surface, 'blit') or surface is None:
+                return
+                
+            # Get the current frame
+            frame = self.get_current_frame()
+            
+            # If we don't have a valid frame, try to regenerate sprites
+            if frame is None or not hasattr(frame, 'blit'):
+                print("Warning: Invalid frame, attempting to regenerate sprites...")
+                self._generate_cached_sprites()
+                frame = self.get_current_frame()
+                
+                # If still invalid, give up
+                if frame is None or not hasattr(frame, 'blit'):
+                    print("Error: Could not get valid frame after regeneration")
+                    return
+            
+            # Ensure frame dimensions are valid
+            try:
+                frame_width = frame.get_width()
+                frame_height = frame.get_height()
+                if frame_width <= 0 or frame_height <= 0:
+                    print(f"Error: Invalid frame dimensions: {frame_width}x{frame_height}")
+                    return
+            except (AttributeError, pygame.error) as e:
+                print(f"Error getting frame dimensions: {e}")
+                return
+                
+            # Calculate position to center the sprite
+            try:
+                # Convert to integers and ensure they're within reasonable bounds
+                pos_x = int(round(x - frame_width // 2))
+                pos_y = int(round(y - frame_height // 2))
+                # Clamp values to reasonable bounds
+                pos_x = max(-1000, min(10000, pos_x))
+                pos_y = max(-1000, min(10000, pos_y))
+            except (TypeError, ValueError) as e:
+                print(f"Error calculating position: {e}")
+                return
+                
+            # Draw the frame
+            try:
+                # Create a temporary surface if the frame has transparency
+                if frame.get_flags() & pygame.SRCALPHA:
+                    temp_surface = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (0, 0))
+                    surface.blit(temp_surface, (pos_x, pos_y))
+                else:
+                    surface.blit(frame, (pos_x, pos_y))
+                
+                # Update the rect position for collision detection
+                self.rect.x = pos_x
+                self.rect.y = pos_y
+                self.rect.width = frame_width
+                self.rect.height = frame_height
+                
+                # Debug visualization: Draw a rectangle around the sprite
+                try:
+                    pygame.draw.rect(surface, (255, 0, 0), (pos_x, pos_y, frame_width, frame_height), 1)
+                except Exception as e:
+                    print(f"Error drawing debug rect: {e}")
+                    
+            except Exception as e:
+                print(f"Error drawing sprite: {e}")
+                print(f"Position: ({pos_x}, {pos_y}), Frame size: {frame_width}x{frame_height}")
+                print(f"Surface size: {surface.get_size() if hasattr(surface, 'get_size') else 'N/A'}")
+                
+        except Exception as e:
+            print(f"Unexpected error in HumanSprite.draw: {e}")
+            import traceback
+            traceback.print_exc()

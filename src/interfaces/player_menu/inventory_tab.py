@@ -7,9 +7,7 @@ class InventoryUI(MenuUI):
     Contains 28 inventory slots and a menu bar with buttons.
     """
     def __init__(self, screen_width, screen_height):
-        super().__init__(screen_width, screen_height)
-        
-        # Inventory-specific settings
+        # Inventory-specific settings - define these BEFORE calling super().__init__
         self.slot_size = 32
         self.slot_padding = 4
         self.slots_per_row = 4
@@ -19,25 +17,12 @@ class InventoryUI(MenuUI):
         self.panel_width = (self.slot_size + self.slot_padding) * self.slots_per_row + self.slot_padding
         self.panel_height = (self.slot_size + self.slot_padding) * self.num_rows + self.slot_padding
         
-        # Update panel position
-        self.panel_x = screen_width - self.panel_width - 20  # 20px margin from right
-        self.panel_y = screen_height - self.panel_height - 50 - 20  # 50px for menu bar, 20px margin from bottom
-        
-        # Update menu bar position
-        self.menu_x = self.panel_x
-        self.menu_y = self.panel_y + self.panel_height + 10  # 10px gap between inventory and menu
-        self.menu_width = self.panel_width
+        # Now call super().__init__ with the correct panel dimensions
+        super().__init__(screen_width, screen_height)
         
         # Create inventory slots (7 rows, 4 columns)
         self.slots = []
-        for row in range(7):
-            for col in range(4):
-                x = self.panel_x + col * (self.slot_size + self.slot_padding) + self.slot_padding
-                y = self.panel_y + row * (self.slot_size + self.slot_padding) + self.slot_padding
-                self.slots.append({
-                    "rect": pygame.Rect(x, y, self.slot_size, self.slot_size),
-                    "item": None
-                })
+        self.update_slot_positions()
     
     def draw_tab_content(self, screen):
         """Draw the content based on the active tab."""
@@ -55,6 +40,25 @@ class InventoryUI(MenuUI):
         elif self.active_tab == "Settings":
             from src.ui.settings_tab import draw_settings_tab
             draw_settings_tab(self, screen)
+    
+    def update_slot_positions(self):
+        """Update the positions of all inventory slots based on current panel position"""
+        self.slots = []
+        for row in range(self.num_rows):
+            for col in range(self.slots_per_row):
+                x = self.panel_x + col * (self.slot_size + self.slot_padding) + self.slot_padding
+                y = self.panel_y + row * (self.slot_size + self.slot_padding) + self.slot_padding
+                self.slots.append({
+                    "rect": pygame.Rect(x, y, self.slot_size, self.slot_size),
+                    "item": None
+                })
+    
+    def update_position(self, screen_width, screen_height):
+        """Override the parent method to also update inventory slot positions"""
+        # Call parent method to update panel and menu positions
+        super().update_position(screen_width, screen_height)
+        # Update slot positions based on new panel position
+        self.update_slot_positions()
     
     def _draw_inventory_tab(self, screen):
         """Draw the inventory slots."""

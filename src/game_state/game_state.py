@@ -23,6 +23,10 @@ class GameState:
     def exit_state(self):
         """Called when state becomes inactive."""
         pass
+        
+    def resize(self, width, height):
+        """Called when the screen is resized. Override in child classes."""
+        pass
 
 
 class GameStateManager:
@@ -53,8 +57,18 @@ class GameStateManager:
         """Get a state by name"""
         return self.states.get(state_name)
         
-    def change_state(self, state_name):
-        """Change to a different state."""
+    def change_state(self, state_name, state_args=None):
+        """
+        Change to a different state.
+        
+        Args:
+            state_name: Name of the state to change to, or a tuple of (state_name, state_args)
+            state_args: Optional dictionary of arguments to pass to the state's enter_state method
+        """
+        # Handle case where state_name is a tuple of (state_name, state_args)
+        if isinstance(state_name, tuple) and len(state_name) == 2 and isinstance(state_name[1], dict):
+            state_name, state_args = state_name
+        
         if state_name in self.states:
             # Exit current state if it exists
             if self.current_state:
@@ -62,7 +76,12 @@ class GameStateManager:
             
             # Change to new state
             self.current_state = state_name
-            self.states[self.current_state].enter_state()
+            
+            # Call enter_state with provided arguments if any
+            if state_args:
+                self.states[self.current_state].enter_state(**state_args)
+            else:
+                self.states[self.current_state].enter_state()
         
     def update(self, delta_time):
         """Update current state and handle state changes."""
@@ -72,9 +91,14 @@ class GameStateManager:
             
             # Check if state is done and needs to transition
             if current.done and current.next_state:
-                next_state_name = current.next_state
+                next_state = current.next_state
                 current.done = False  # Reset done flag to prevent infinite transitions
-                self.change_state(next_state_name)
+                
+                # If next_state is a tuple, unpack it for the change_state method
+                if isinstance(next_state, tuple) and len(next_state) == 2 and isinstance(next_state[1], dict):
+                    self.change_state(next_state[0], next_state[1])
+                else:
+                    self.change_state(next_state)
         
     def draw(self, screen):
         """Draw current state to the screen."""
@@ -82,6 +106,23 @@ class GameStateManager:
             self.states[self.current_state].draw(screen)
         
     def handle_events(self, events):
-        """Pass events to current state."""
+        """Pass events to current state.
+        
+        Args:
+            events: List of pygame events
+            
+        Returns:
+            bool: True if the event was handled, False otherwise
+        """
         if self.current_state:
             self.states[self.current_state].handle_events(events)
+            
+    def resize(self, width, height):
+        """Notify the current state that the screen was resized.
+        
+        Args:
+            width: New screen width
+            height: New screen height
+        """
+        if self.current_state:
+            self.states[self.current_state].resize(width, height)

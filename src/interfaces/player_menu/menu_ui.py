@@ -28,6 +28,9 @@ class MenuUI:
         self.menu_y = self.panel_y + self.panel_height + 10  # 10px gap between inventory and menu
         self.menu_width = self.panel_width
         
+        # Store original dimensions for repositioning
+        self.update_position(screen_width, screen_height)
+        
         # Menu buttons
         self.buttons = [
             {"name": "Inventory", "active": True},
@@ -51,8 +54,27 @@ class MenuUI:
         # Font
         self.font = pygame.font.SysFont(None, 20)
     
+    def update_position(self, screen_width, screen_height):
+        """Update UI positions based on screen dimensions"""
+        # Update stored screen dimensions
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        
+        # Reposition panel in bottom right with margins
+        self.panel_x = screen_width - self.panel_width - 20  # 20px margin from right
+        self.panel_y = screen_height - self.panel_height - 50 - 20  # 50px for menu bar, 20px margin from bottom
+        
+        # Update menu bar position
+        self.menu_x = self.panel_x
+        self.menu_y = self.panel_y + self.panel_height + 10  # 10px gap between inventory and menu
+    
     def draw(self, screen):
         """Draw the menu UI with the active tab content."""
+        # Update position based on current screen size
+        current_width, current_height = screen.get_size()
+        if current_width != self.screen_width or current_height != self.screen_height:
+            self.update_position(current_width, current_height)
+            
         # Draw panel background
         panel_rect = pygame.Rect(self.panel_x, self.panel_y, self.panel_width, self.panel_height)
         panel_surface = pygame.Surface((self.panel_width, self.panel_height), pygame.SRCALPHA)

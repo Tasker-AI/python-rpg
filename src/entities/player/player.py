@@ -1,3 +1,6 @@
+"""
+Player class that handles player movement, rendering, and interactions.
+"""
 import pygame
 import math
 from collections import deque
@@ -8,40 +11,67 @@ class Player:
     """
     Player class that handles player attributes, movement, and rendering.
     """
-    def __init__(self, grid_x, grid_y, tilemap, asset_manager):
-        # Tile-based position and movement
-        self.grid_x = grid_x
-        self.grid_y = grid_y
-        self.tilemap = tilemap
+    def __init__(self, grid_x, grid_y, tilemap, asset_manager, world_state=None):
+        """
+        Initialize the player.
         
-        # Pixel position (center of tile)
-        self.x, self.y = tilemap.grid_to_pixel(grid_x, grid_y)
+        Args:
+            grid_x: Initial x-coordinate in grid space
+            grid_y: Initial y-coordinate in grid space
+            tilemap: For backward compatibility, but should be None
+            asset_manager: Asset manager for loading images and resources
+            world_state: Reference to the world state for world interaction and pathfinding
+        """
+        if world_state is None:
+            raise ValueError("world_state is required for Player initialization")
+            
+        # Tile-based position and movement
+        self.grid_x = int(grid_x)
+        self.grid_y = int(grid_y)
+        self.world_state = world_state
+        self.on_arrival_callback = None  # Callback for when the player reaches their destination
+        
+        # Initialize sprite and rect with blue color
+        self.sprite = HumanSprite(color=(0, 0, 255))  # Blue clothing
+        self.rect = self.sprite.rect
+        
+        # Set initial position
+        self.x, self.y = self.world_state.world_to_screen(self.grid_x, self.grid_y)
+        self.rect.x = self.x - 16  # Center the sprite on the tile
+        self.rect.y = self.y - 16   # Position feet at the tile position
+        
+        # Store tile size for quick access
+        self.tile_size = self.world_state.tile_size
         
         # Movement queue for pathfinding
         self.movement_queue = deque()
         self.moving = False
-        self.move_progress = 0.0  # Progress toward next tile (0.0 to 1.0)
-        self.next_grid_x = None
-        self.next_grid_y = None
         
-        # Interpolation variables for smooth movement
-        self.start_x = self.x
-        self.start_y = self.y
-        self.target_x = self.x
-        self.target_y = self.y
-        self.tick_rate = 0.6  # Same as game tick rate
+        # Store pixel positions for smooth rendering
+        self.start_x = float(self.x)
+        self.start_y = float(self.y)
+        self.target_x = float(self.x)
+        self.target_y = float(self.y)
         
-        # Path visualization
-        self.current_path = []
+        # Movement state
+        self.last_move_tick = 0  # Last game tick when the player started moving
+        self.move_start_tick = 0  # When the current move started
+        self.moving = False  # Whether the player is currently moving
+        self.move_duration = 0.2  # Duration of movement animation in seconds
+        self.move_progress = 0.0  # Progress through current movement (0.0 to 1.0)
+        self.start_x = float(self.x)  # Starting x position for current move
+        self.start_y = float(self.y)  # Starting y position for current move
+        self.target_x = float(self.x)  # Target x position for current move
+        self.target_y = float(self.y)  # Target y position for current move
+        self.tiles_per_move = 1  # Number of tiles to move per move
+        self.move_direction = (0, 0)  # Current movement direction (dx, dy)
         
-        # Pending movements to be processed on tick
-        self.pending_movements = []
+        # Direction the player is facing
+        self.facing = 'down'  # Default facing direction
         
-        # Track final destination for verification
-        self.final_destination = None
-        
-        # Create player rectangle for collision
-        self.rect = pygame.Rect(self.x - 16, self.y - 16, 32, 32)
+        # Movement flags
+        self.final_tile_pending = False  # Flag to handle final tile movement
+        self.path = []  # Path for movement
         
         # Attributes and stats
         self.max_health = 100
@@ -49,391 +79,451 @@ class Player:
         self.attack = 10
         self.defense = 5
         
-        # Combat state
-        self.in_combat = False  # Only show health bar when in combat
-        
-        # Skills
-        self.skills = {
-            "woodcutting": 1,
-            "firemaking": 1,
-            "fishing": 1,
-            "cooking": 1,
-            "mining": 1,
-            "smithing": 1,
-            "agility": 1
-        }
-        
-        # Experience and level
-        self.level = 1
-        self.experience = 0
-        self.experience_to_level = 100  # Experience needed for next level
-        
         # Assets
         self.asset_manager = asset_manager
+
+    def move_to_tile(self, tile_x, tile_y, on_arrival=None):
+        """Move the player to a specific tile."""
+        if not hasattr(self, 'world_state') or not hasattr(self.world_state, 'tile_size'):
+            game_logger.warning("Cannot move - world state not properly initialized")
+            return False
         
-        # Create human sprite renderer
-        self.sprite = HumanSprite(color=(0, 0, 255))  # Blue clothing
+        # Check if the target tile is walkable
+        if not self.world_state.is_walkable(tile_x, tile_y):
+            game_logger.info(f"MOVE_TO_TILE: Cannot move to non-walkable tile ({tile_x}, {tile_y})")
+            return False
         
-        # Keep old image reference for compatibility
-        self.image = asset_manager.get_image("player")
-        if not self.image:  # If image not loaded yet
-            self.image = asset_manager.load_image("player", "player.png")
+        game_logger.info(f"MOVE_TO_TILE: Moving to ({tile_x}, {tile_y})")
         
-        # Collision rectangle
-        self.rect = pygame.Rect(self.x - 16, self.y - 16, 32, 32)
-    
-    def queue_movement(self, grid_x, grid_y):
-        """Queue a movement to be processed on the next game tick."""
-        game_logger.debug(f"Player.queue_movement: Current tile: ({self.grid_x}, {self.grid_y}), Target tile: ({grid_x}, {grid_y})")
+        # Determine the starting position for pathfinding
+        # If we're already moving and have a pending tile, use that as the start position
+        start_x, start_y = self.grid_x, self.grid_y
         
-        # Check if target is within map bounds
-        if not (0 <= grid_x < self.tilemap.width and 0 <= grid_y < self.tilemap.height):
-            game_logger.warning(f"Target tile ({grid_x}, {grid_y}) is outside map bounds")
+        # If we're in the middle of a movement and have a next position, use that instead
+        if self.moving and hasattr(self, 'next_grid_x') and hasattr(self, 'next_grid_y'):
+            start_x, start_y = self.next_grid_x, self.next_grid_y
+            game_logger.debug(f"Starting new path from next position: ({start_x}, {start_y})")
+        
+        # Find path using A* from the appropriate starting position
+        path = self.world_state.find_path((start_x, start_y), (tile_x, tile_y))
+        
+        # If no path found, return False
+        if not path:
+            game_logger.info(f"MOVE_TO_TILE: No path found to ({tile_x}, {tile_y})")
+            return False
+        
+        # Set the callback to be called when we arrive
+        if on_arrival:
+            self.on_arrival_callback = on_arrival
+        
+        # Store the path
+        self.path = path
+        
+        # Queue the movement until the next tick
+        # We set moving to True but don't process movement yet
+        self.moving = True
+        self.movement_queued = True  # Flag to indicate movement is queued
+        self.last_move_tick = getattr(self.world_state, 'game_ticks', 0) - 1  # Ensure movement starts on next tick
+        
+        # Clear any pending movement flags
+        self.final_tile_pending = False
+        
+        # Initialize movement positions to current position
+        current_pos = self.world_state.world_to_screen(self.grid_x, self.grid_y)
+        self.movement_start_x = current_pos[0]
+        self.movement_start_y = current_pos[1]
+        self.x = current_pos[0]
+        self.y = current_pos[1]
+            
+        game_logger.debug(f"Found path with {len(self.path)} tiles to ({tile_x}, {tile_y})")
+        
+        return True
+        
+    def _setup_next_movement_segment(self):
+        """Set up the next movement segment."""
+        if not self.path:
+            self.moving = False
             return
             
-        # Check if target is walkable
-        if not self.tilemap.is_walkable(grid_x, grid_y):
-            game_logger.warning(f"Target tile ({grid_x}, {grid_y}) is not walkable")
-            return
+        # Get the next position from the path
+        self.next_grid_x, self.next_grid_y = self.path[0]
         
-        # Add to pending movements (will be processed on next tick)
-        self.pending_movements.append((grid_x, grid_y))
-        game_logger.debug(f"Added movement to ({grid_x}, {grid_y}) to pending queue. Queue size: {len(self.pending_movements)}")
-    
-    def process_movement_queue(self):
-        """Process the pending movement queue on a game tick."""
-        if not self.pending_movements:
-            return
+        # Calculate screen coordinates
+        self.start_x, self.start_y = self.world_state.world_to_screen(self.grid_x, self.grid_y)
+        self.target_x, self.target_y = self.world_state.world_to_screen(self.next_grid_x, self.next_grid_y)
         
-        # Get the most recent click and clear the queue
-        grid_x, grid_y = self.pending_movements[-1]
-        self.pending_movements.clear()
-        game_logger.debug(f"Processing movement to ({grid_x}, {grid_y}) on tick")
+        # Update sprite facing direction based on movement direction
+        dx = self.next_grid_x - self.grid_x
+        dy = self.next_grid_y - self.grid_y
         
-        # Find path to target
-        path = self.tilemap.find_path(self.grid_x, self.grid_y, grid_x, grid_y)
-        
-        # Log path information
-        if path:
-            game_logger.debug(f"Path found with {len(path)} steps")
-            game_logger.debug(f"Path: {path}")
+        if abs(dx) > abs(dy):
+            self.facing = 'right' if dx > 0 else 'left'
         else:
-            game_logger.warning(f"No path found to ({grid_x}, {grid_y})")
-            return
-        
-        # Clear current movement queue and add new path
-        self.movement_queue.clear()
-        game_logger.debug(f"Cleared movement queue")
-        
-        # Store the final destination for verification
-        self.final_destination = (grid_x, grid_y)
-        
-        if path:
-            # Make sure the target tile is the last one in the path
-            if path[-1] != (grid_x, grid_y):
-                game_logger.warning(f"Target tile ({grid_x}, {grid_y}) not in path, forcing it")
-                path.append((grid_x, grid_y))
+            self.facing = 'down' if dy > 0 else 'up'
             
-            # Skip the first position (current position) if it exists
-            start_index = 1 if len(path) > 1 and path[0] == (self.grid_x, self.grid_y) else 0
+        if hasattr(self, 'sprite') and self.sprite:
+            self.sprite.set_direction(self.facing)
             
-            # Add all path steps to the movement queue
-            for x, y in path[start_index:]:
-                self.movement_queue.append((x, y))
-            
-            game_logger.debug(f"Added {len(self.movement_queue)} steps to movement queue: {list(self.movement_queue)}")
-            
-            # Start moving to the first position in the queue
-            self.start_next_move()
-    
-    def move_to_tile(self, grid_x, grid_y):
-        """Set a target position for the player to move towards using pathfinding."""
-        game_logger.info(f"MOVE_TO_TILE: Player at ({self.grid_x}, {self.grid_y}) moving to ({grid_x}, {grid_y})")
+        # Reset movement progress
+        self.move_progress = 0.0
         
-        # Check if target is within map bounds
-        if not (0 <= grid_x < self.tilemap.width and 0 <= grid_y < self.tilemap.height):
-            game_logger.warning(f"Target tile ({grid_x}, {grid_y}) is outside map bounds")
+        game_logger.debug(f"Moving from ({self.grid_x}, {self.grid_y}) to ({self.next_grid_x}, {self.next_grid_y})")
+        
+        return True
+
+    def _start_next_move(self):
+        """Start moving to the next position in the movement queue."""
+        game_logger.debug(f"_start_next_move: Queue size: {len(self.movement_queue) if hasattr(self, 'movement_queue') else 'N/A'})")
+        
+        # If no more movements in queue, stop moving
+        if not hasattr(self, 'movement_queue') or not self.movement_queue:
+            game_logger.debug("_start_next_move: No movement queue or queue is empty")
+            self.moving = False
+            
+            # Call the arrival callback if it exists
+            if hasattr(self, 'on_arrival_callback') and self.on_arrival_callback:
+                try:
+                    game_logger.debug("Calling arrival callback")
+                    self.on_arrival_callback()
+                except Exception as e:
+                    game_logger.error(f"Error in arrival callback: {e}")
+                finally:
+                    self.on_arrival_callback = None
             return
             
-        # Check if target is walkable
-        if not self.tilemap.is_walkable(grid_x, grid_y):
-            game_logger.warning(f"Target tile ({grid_x}, {grid_y}) is not walkable")
-            return
+        # Get the next position from the queue
+        next_pos = self.movement_queue.popleft()
+        
+        # If we got a grid position, convert it to screen coordinates
+        if len(next_pos) == 2:  # It's a grid position
+            target_x, target_y = next_pos
+            # Convert grid to screen coordinates if needed
+            if hasattr(self, 'world_state') and hasattr(self.world_state, 'world_to_screen'):
+                target_x, target_y = self.world_state.world_to_screen(target_x, target_y)
             
-        # If we're already at the target tile, no need to move
-        if self.grid_x == grid_x and self.grid_y == grid_y:
-            game_logger.info(f"Already at target tile ({grid_x}, {grid_y})")
-            return
+            # Store the target grid position
+            self.grid_x, self.grid_y = next_pos
+        else:  # It's already screen coordinates
+            target_x, target_y = next_pos
+            # Convert screen to grid coordinates
+            if hasattr(self, 'world_state') and hasattr(self.world_state, 'screen_to_world'):
+                self.grid_x, self.grid_y = self.world_state.screen_to_world(target_x, target_y)
         
-        # Find path to target
-        path = self.tilemap.find_path(self.grid_x, self.grid_y, grid_x, grid_y)
+        # Store starting position for smooth movement
+        self.start_x = float(self.x)
+        self.start_y = float(self.y)
+        self.target_x = float(target_x)
+        self.target_y = float(target_y)
         
-        # Log path information
-        if path:
-            game_logger.debug(f"Path found with {len(path)} steps")
-            game_logger.debug(f"Path: {path}")
+        # Calculate direction for sprite animation
+        dx = 0
+        dy = 0
+        if abs(self.target_x - self.start_x) > abs(self.target_y - self.start_y):
+            dx = 1 if self.target_x > self.start_x else -1
         else:
-            game_logger.warning(f"No path found to ({grid_x}, {grid_y})")
+            dy = 1 if self.target_y > self.start_y else -1
+        self.move_direction = (dx, dy)
+        
+        # Update sprite facing direction
+        if dx > 0:
+            self.facing = 'right'
+        elif dx < 0:
+            self.facing = 'left'
+        elif dy > 0:
+            self.facing = 'down'
+        elif dy < 0:
+            self.facing = 'up'
+            
+        if hasattr(self, 'sprite') and self.sprite:
+            self.sprite.set_direction(self.facing)
+        
+        # Start movement
+        self.moving = True
+        self.move_progress = 0.0
+        self.last_move_tick = getattr(self.world_state, 'game_ticks', 0)
+        
+        game_logger.debug(f"Starting smooth movement from ({self.start_x}, {self.start_y}) to ({self.target_x}, {self.target_y})")
+    
+    def update(self, current_time):
+        """Update the player's movement and position based on game ticks."""
+        try:
+            # Get current game tick and tick information from world state
+            current_tick = getattr(self.world_state, 'game_ticks', 0)
+            tick_interval = getattr(self.world_state, 'tick_interval', 300) / 1000.0  # Convert to seconds
+            last_tick_time = getattr(self.world_state, 'last_tick_time', current_time - 16)
+            
+            # Calculate delta time since last update
+            dt = 1.0 / 60.0  # Default delta time if we can't calculate it
+            if hasattr(self, '_last_update_time'):
+                dt = (current_time - self._last_update_time) / 1000.0  # Convert to seconds
+            self._last_update_time = current_time
+            
+            # Handle movement
+            if self.moving:
+                # Check if we're on a new game tick
+                if current_tick > self.last_move_tick:
+                    # Check if this is the first movement (queued movement)
+                    if hasattr(self, 'movement_queued') and self.movement_queued:
+                        # Start the movement on this tick
+                        self.movement_queued = False
+                        game_logger.debug(f"Starting queued movement on tick {current_tick}")
+                        
+                    # Check if we need to finalize the last movement
+                    elif hasattr(self, 'final_tile_pending') and self.final_tile_pending:
+                        # Update grid position to the final tile
+                        self.grid_x, self.grid_y = self.next_grid_x, self.next_grid_y
+                        
+                        # Remove the tiles we've moved through
+                        tiles_to_remove = getattr(self, 'tiles_to_remove', 1)
+                        for _ in range(min(tiles_to_remove, len(self.path))):
+                            self.path.pop(0)
+                            
+                        self.final_tile_pending = False
+                        
+                        # If we've reached the end of the path
+                        if not self.path:
+                            self.moving = False
+                            
+                            # Call the arrival callback if it exists
+                            if hasattr(self, 'on_arrival_callback') and self.on_arrival_callback:
+                                try:
+                                    self.on_arrival_callback()
+                                except Exception as e:
+                                    game_logger.error(f"Error in arrival callback: {e}")
+                                finally:
+                                    self.on_arrival_callback = None
+                    
+                    # We've moved to a new tick, process the movement for this tick if still moving
+                    if self.moving and self.path:
+                        self._process_movement_for_tick(current_tick)
+                
+                # Always do smooth visual interpolation between positions
+                # Get current position in screen coordinates
+                current_x, current_y = self.world_state.world_to_screen(self.grid_x, self.grid_y)
+                
+                # Determine the next position to move towards
+                if hasattr(self, 'path') and self.path:
+                    # Calculate how far we should be between current position and next position
+                    # based on time since last tick
+                    time_since_tick = (current_time - last_tick_time) / 1000.0
+                    progress = min(1.0, time_since_tick / tick_interval)
+                    
+                    # Get the next position (either from next_grid_x/y or from path)
+                    if hasattr(self, 'next_grid_x') and hasattr(self, 'next_grid_y'):
+                        next_x, next_y = self.world_state.world_to_screen(self.next_grid_x, self.next_grid_y)
+                    elif self.path:
+                        next_x, next_y = self.world_state.world_to_screen(self.path[0][0], self.path[0][1])
+                    else:
+                        next_x, next_y = current_x, current_y
+                    
+                    # Store the start position for this movement segment if not already set
+                    if not hasattr(self, 'movement_start_x') or not hasattr(self, 'movement_start_y'):
+                        self.movement_start_x = current_x
+                        self.movement_start_y = current_y
+                        self.movement_target_x = next_x
+                        self.movement_target_y = next_y
+                    
+                    # Interpolate position for smooth movement
+                    # Use the stored start and target positions to avoid jumps
+                    self.x = self.movement_start_x + (self.movement_target_x - self.movement_start_x) * progress
+                    self.y = self.movement_start_y + (self.movement_target_y - self.movement_start_y) * progress
+                    
+                    # Update the rect position
+                    if hasattr(self, 'rect'):
+                        self.rect.centerx = int(self.x)
+                        self.rect.centery = int(self.y)
+                else:
+                    # No path, just stay at current position
+                    self.x = current_x
+                    self.y = current_y
+                    if hasattr(self, 'rect'):
+                        self.rect.centerx = int(self.x)
+                        self.rect.centery = int(self.y)
+            
+            # Update sprite animation based on movement state
+            if hasattr(self, 'sprite') and self.sprite:
+                self.sprite.walking = self.moving
+                self.sprite.update(dt, is_moving=self.moving)
+                
+        except Exception as e:
+            game_logger.error(f"Error in player update: {e}")
+            import traceback
+            traceback.print_exc()
+            
+    def _process_movement_for_tick(self, current_tick):
+        """Process movement for the current game tick."""
+        # If we're not moving or have no path, do nothing
+        if not self.moving or not self.path:
             return
+            
+        # We can move up to 2 tiles per tick
+        tiles_to_move = min(len(self.path), self.tiles_per_move)
         
-        # Clear current movement queue and add new path
-        self.movement_queue.clear()
-        game_logger.debug(f"Cleared movement queue")
+        # Store the tiles we'll move through in this tick
+        tiles_for_this_tick = self.path[:tiles_to_move]
         
-        if path:
-            # Make sure the target tile is the last one in the path
-            if path[-1] != (grid_x, grid_y):
-                game_logger.debug(f"Adding target tile ({grid_x}, {grid_y}) to path")
-                path.append((grid_x, grid_y))
-            
-            # Skip the first position (current position)
-            if len(path) > 1:
-                for x, y in path[1:]:
-                    self.movement_queue.append((x, y))
-            
-            game_logger.debug(f"Added {len(self.movement_queue)} steps to movement queue")
-            
-            # Start moving to the first position in the queue
-            self.start_next_move()
-    
-    def move_to(self, pixel_x, pixel_y):
-        """Set a target position for the player to move towards using pathfinding."""
-        # Convert pixel coordinates to grid coordinates
-        target_grid_x, target_grid_y = self.tilemap.pixel_to_grid(pixel_x, pixel_y)
+        # Set up the movement segment
+        start_tile = (self.grid_x, self.grid_y)
+        end_tile = tiles_for_this_tick[-1]  # Last tile in this tick's movement
         
-        # Use the more reliable tile-based movement method
-        self.move_to_tile(target_grid_x, target_grid_y)
-    
-    def start_next_move(self):
-        """Start moving to the next position in the queue."""
-        if self.movement_queue:
-            self.next_grid_x, self.next_grid_y = self.movement_queue.popleft()
-            game_logger.debug(f"Moving to next tile: ({self.next_grid_x}, {self.next_grid_y})")
+        # Calculate screen coordinates
+        start_pos = self.world_state.world_to_screen(start_tile[0], start_tile[1])
+        end_pos = self.world_state.world_to_screen(end_tile[0], end_tile[1])
+        
+        # Store the movement information for smooth interpolation
+        self.movement_start_x = start_pos[0]
+        self.movement_start_y = start_pos[1]
+        self.movement_target_x = end_pos[0]
+        self.movement_target_y = end_pos[1]
+        
+        # Update the grid position to the end of this segment
+        # (visual position will be interpolated)
+        self.next_grid_x, self.next_grid_y = end_tile
+        
+        # Update direction based on movement
+        dx = self.next_grid_x - self.grid_x
+        dy = self.next_grid_y - self.grid_y
+        
+        if abs(dx) > abs(dy):
+            self.facing = 'right' if dx > 0 else 'left'
+        else:
+            self.facing = 'down' if dy > 0 else 'up'
             
-            # Verify the tile is walkable
-            if not self.tilemap.is_walkable(self.next_grid_x, self.next_grid_y):
-                game_logger.warning(f"Attempted to move to non-walkable tile ({self.next_grid_x}, {self.next_grid_y}), skipping")
-                self.start_next_move()  # Try the next tile in the queue
+        if hasattr(self, 'sprite') and self.sprite:
+            self.sprite.set_direction(self.facing)
+        
+        # Mark this segment for completion in the next tick
+        self.final_tile_pending = True
+        self.tiles_to_remove = tiles_to_move
+        
+        # Update the last move tick
+        self.last_move_tick = current_tick
+        
+        game_logger.debug(f"Movement segment: {start_tile} to {end_tile}, removing {tiles_to_move} tiles next tick")
+            
+        # Ensure position is valid
+        if not hasattr(self, 'world_state') or not hasattr(self.world_state, 'width') or not hasattr(self.world_state, 'height'):
+            return
+            
+        # Clamp position to world bounds
+        max_x = (self.world_state.width - 1) * self.world_state.tile_size
+        max_y = (self.world_state.height - 1) * self.world_state.tile_size
+        self.x = max(0, min(self.x, max_x))
+        self.y = max(0, min(self.y, max_y))
+        
+        # Update sprite position
+        if hasattr(self, 'sprite') and self.sprite and hasattr(self.sprite, 'rect'):
+            self.sprite.rect.centerx = int(self.x)
+            self.sprite.rect.centery = int(self.y)
+        
+        # Call the arrival callback if it exists (outside the try-except)
+        if hasattr(self, 'on_arrival_callback') and self.on_arrival_callback and not self.moving:
+            try:
+                game_logger.debug("Calling arrival callback")
+                self.on_arrival_callback()
+            except Exception as e:
+                game_logger.error(f"Error in arrival callback: {e}")
+            finally:
+                self.on_arrival_callback = None
+        
+        # Start the next move if there are more moves in the queue
+        if hasattr(self, 'movement_queue') and self.movement_queue and not self.moving:
+            self._start_next_move()
+                
+    def draw(self, screen, camera_x=0, camera_y=0, debug=False):
+        """
+        Draw the player on the screen.
+        
+        Args:
+            screen: The surface to draw on
+            camera_x: Camera x offset
+            camera_y: Camera y offset
+            debug: If True, draw debug information
+        """
+        if not screen or not hasattr(screen, 'blit') or not hasattr(self, 'sprite') or not self.sprite:
+            return
+            
+        try:
+            # Ensure we have valid position
+            if not hasattr(self, 'x') or not hasattr(self, 'y'):
                 return
                 
-            self.moving = True
-            self.move_progress = 0.0
-        else:
-            # No more moves in the queue
-            self.moving = False
-            self.next_grid_x = None
-            self.next_grid_y = None
+            # Calculate screen position with camera offset
+            screen_x = int(self.x - camera_x)
+            screen_y = int(self.y - camera_y)
             
-            # Set position to exact center of current tile
-            exact_x, exact_y = self.tilemap.grid_to_pixel(self.grid_x, self.grid_y)
-            self.x = exact_x
-            self.y = exact_y
+            # Skip drawing if off-screen (with some margin for sprites that might be partially visible)
+            margin = 128  # Increased margin to account for sprite size
+            if (screen_x < -margin or screen_x > screen.get_width() + margin or 
+                screen_y < -margin or screen_y > screen.get_height() + margin):
+                return
             
-            # Check if we reached our final destination
-            if self.final_destination:
-                if (self.grid_x, self.grid_y) == self.final_destination:
-                    game_logger.info(f"DESTINATION REACHED: Player arrived at final destination {self.final_destination} at exact center ({self.x}, {self.y})")
-                else:
-                    game_logger.warning(f"DESTINATION MISSED: Player stopped at ({self.grid_x}, {self.grid_y}) but destination was {self.final_destination}")
-                self.final_destination = None
+            # Update animation state
+            self.sprite.walking = hasattr(self, 'moving') and self.moving
             
-            self.current_path = []
-    
-    def update(self, delta_time, tick_occurred=False):
-        """Update player position and state."""
-        # Determine direction based on movement
-        direction = None
-        if self.next_grid_x is not None and self.next_grid_y is not None:
-            # Calculate direction based on movement
-            dx = self.next_grid_x - self.grid_x
-            dy = self.next_grid_y - self.grid_y
+            # Update sprite facing direction
+            if hasattr(self, 'facing'):
+                if self.facing == 'left':
+                    self.sprite.direction = 1  # Left
+                elif self.facing == 'right':
+                    self.sprite.direction = 3  # Right
+                elif self.facing == 'up':
+                    self.sprite.direction = 2  # Up
+                else:  # down or default
+                    self.sprite.direction = 0  # Down
             
-            if abs(dx) > abs(dy):
-                # Moving horizontally
-                direction = 3 if dx > 0 else 1  # Right or Left
-            else:
-                # Moving vertically
-                direction = 2 if dy < 0 else 0  # Up or Down
-        
-        # Update sprite animation
-        self.sprite.update(delta_time, self.moving, direction)
-        
-        # Handle movement state
-        if self.moving:
-            if tick_occurred and self.next_grid_x is not None and self.next_grid_y is not None:
-                # Log current state before movement
-                game_logger.debug(f"Player tick update: Current position: ({self.x}, {self.y}), Tile: ({self.grid_x}, {self.grid_y})")
+            # Draw the sprite at the current position
+            # Make sure to update the rect position first
+            self.rect.centerx = screen_x
+            self.rect.centery = screen_y
+            self.sprite.rect = self.rect
+            
+            # Draw the sprite with feet at the specified position
+            self.sprite.draw(screen, screen_x, screen_y)
+            
+            # Draw debug information
+            if debug:
+                # Draw player position
+                font = pygame.font.Font(None, 20)
+                pos_text = f"Player: ({int(self.x)}, {int(self.y)}) Grid: ({self.grid_x}, {self.grid_y})"
+                text_surface = font.render(pos_text, True, (255, 255, 255), (0, 0, 0))
+                screen.blit(text_surface, (screen_x - text_surface.get_width() // 2, screen_y - 50))
                 
-                # Complete the move on a game tick
-                self.grid_x = self.next_grid_x
-                self.grid_y = self.next_grid_y
+                # Draw movement target
+                if hasattr(self, 'target_x') and hasattr(self, 'target_y'):
+                    target_screen_x = int(self.target_x - camera_x)
+                    target_screen_y = int(self.target_y - camera_y)
+                    pygame.draw.circle(screen, (255, 0, 0), (target_screen_x, target_screen_y), 5)
+                    pygame.draw.line(screen, (255, 0, 0), (screen_x, screen_y), 
+                                   (target_screen_x, target_screen_y), 1)
                 
-                # Get the exact center pixel position for the new grid position
-                exact_x, exact_y = self.tilemap.grid_to_pixel(self.grid_x, self.grid_y)
+                # Draw movement queue
+                if hasattr(self, 'movement_queue') and self.movement_queue:
+                    prev_x, prev_y = screen_x, screen_y
+                    for i, (gx, gy) in enumerate(self.movement_queue):
+                        qx, qy = self.world_state.world_to_screen(gx, gy)
+                        qx -= camera_x
+                        qy -= camera_y
+                        pygame.draw.circle(screen, (0, 255, 0) if i == 0 else (0, 200, 0), 
+                                        (int(qx), int(qy)), 3)
+                        pygame.draw.line(screen, (0, 200, 0), (prev_x, prev_y), (int(qx), int(qy)), 1)
+                        prev_x, prev_y = int(qx), int(qy)
                 
-                # Store start position for interpolation
-                self.start_x = self.x
-                self.start_y = self.y
-                self.target_x = exact_x
-                self.target_y = exact_y
-                self.move_progress = 0.0
-                
-                game_logger.info(f"Player moved to tile: ({self.grid_x}, {self.grid_y}), Exact center: ({exact_x}, {exact_y})")
-                
-                # If this is the final destination, log it
-                if self.final_destination and (self.grid_x, self.grid_y) == self.final_destination:
-                    game_logger.info(f"DESTINATION REACHED: Player arrived at final destination {self.final_destination}")
-                    self.final_destination = None
-                
-                # Check if there are more moves in the queue
-                if len(self.movement_queue) > 0:
-                    self.start_next_move()
-                else:
-                    # If no more moves, continue interpolation but mark as not moving
-                    # This allows the interpolation to finish without jerky movement
-                    self.next_grid_x = None
-                    self.next_grid_y = None
-                    # Don't set moving=False yet - we'll do that when interpolation completes
-                    game_logger.info(f"Final movement to exact center: ({exact_x}, {exact_y})")
-            
-            # Always update interpolation when moving, regardless of tick
-            # Smooth movement between positions using interpolation
-            self.move_progress = min(1.0, self.move_progress + delta_time / self.tick_rate)
-            
-            # Interpolate position
-            self.x = self.start_x + (self.target_x - self.start_x) * self.move_progress
-            self.y = self.start_y + (self.target_y - self.start_y) * self.move_progress
-            
-            # Update collision rectangle
-            self.rect.x = self.x - 16
-            self.rect.y = self.y - 16
-            
-            # If interpolation is complete and no more moves, mark as not moving
-            if self.move_progress >= 0.99 and len(self.movement_queue) == 0 and self.next_grid_x is None:
-                self.moving = False
-                # Ensure exact position at end of movement
-                self.x = self.target_x
-                self.y = self.target_y
-                game_logger.debug(f"Movement complete, final position: ({self.x}, {self.y})")
-        
-        # If we're not moving, ensure we're exactly at the center of our tile
-        elif not self.moving:
-            exact_x, exact_y = self.tilemap.grid_to_pixel(self.grid_x, self.grid_y)
-            if abs(self.x - exact_x) > 0.01 or abs(self.y - exact_y) > 0.01:
-                game_logger.info(f"Correcting player position from ({self.x}, {self.y}) to exact center: ({exact_x}, {exact_y})")
-                self.x, self.y = exact_x, exact_y
-                self.rect.x = self.x - 16
-                self.rect.y = self.y - 16
-    
-    def draw(self, screen, camera_x=0, camera_y=0):
-        """Draw the player on the screen."""
-        # Draw movement path if there is one
-        if self.current_path:
-            for i in range(1, len(self.current_path)):
-                x1, y1 = self.tilemap.grid_to_pixel(self.current_path[i-1][0], self.current_path[i-1][1])
-                x2, y2 = self.tilemap.grid_to_pixel(self.current_path[i][0], self.current_path[i][1])
-                pygame.draw.line(screen, (255, 255, 0), 
-                               (x1 - camera_x, y1 - camera_y), 
-                               (x2 - camera_x, y2 - camera_y), 2)
-                
-                # Draw dots at each path point
-                pygame.draw.circle(screen, (255, 255, 0), 
-                                 (x2 - camera_x, y2 - camera_y), 3)
-        
-        # Draw human sprite
-        self.sprite.draw(screen, self.x - camera_x, self.y - camera_y)
-        
-        # Only draw health bar when in combat
-        if self.in_combat:
-            health_percent = self.health / self.max_health
-            bar_width = 32
-            bar_height = 5
-            
-            # Background (gray)
-            pygame.draw.rect(screen, (100, 100, 100), 
-                            (self.x - 16 - camera_x, self.y - 32 - camera_y, bar_width, bar_height))
-            
-            # Health (red)
-            pygame.draw.rect(screen, (200, 0, 0), 
-                            (self.x - 16 - camera_x, self.y - 32 - camera_y, int(bar_width * health_percent), bar_height))
-    
-    def gain_experience(self, amount):
-        """Add experience and check for level up."""
-        self.experience += amount
-        
-        # Check for level up
-        if self.experience >= self.experience_to_level:
-            self.level_up()
-    
-    def level_up(self):
-        """Increase player level and stats."""
-        self.level += 1
-        self.experience -= self.experience_to_level
-        self.experience_to_level = int(self.experience_to_level * 1.5)  # Increase exp needed for next level
-        
-        # Increase stats
-        self.max_health += 10
-        self.health = self.max_health  # Heal to full on level up
-        self.attack += 2
-        self.defense += 1
-        
-        print(f"Level up! Now level {self.level}")
-    
-    def take_damage(self, amount):
-        """Take damage, considering defense."""
-        # Apply defense reduction (simple formula)
-        actual_damage = max(1, amount - self.defense // 2)
-        self.health -= actual_damage
-        
-        # Set player in combat state when taking damage
-        self.in_combat = True
-        
-        if self.health <= 0:
-            self.health = 0
-            self.die()
-            
-        return actual_damage
-        
-    def end_combat(self):
-        """End combat state, hiding the health bar."""
-        self.in_combat = False
-    
-    def heal(self, amount):
-        """Heal the player."""
-        self.health = min(self.health + amount, self.max_health)
-    
-    def die(self):
-        """Handle player death."""
-        print("Player died!")
-        # Will implement respawn logic later
-    
-    def get_skill_level(self, skill):
-        """Get the level of a specific skill."""
-        # Return the integer part of the skill level
-        return int(self.skills.get(skill, 1))
-    
-    def gain_skill_experience(self, skill, amount):
-        """Add experience to a skill and check for level up."""
-        if skill not in self.skills:
-            return
-            
-        current_level = int(self.skills[skill])
-        # Simple formula: each level requires level*100 experience
-        experience_needed = current_level * 100
-        
-        # Track fractional experience as a separate value
-        skill_exp = (self.skills[skill] - current_level) * experience_needed
-        skill_exp += amount
-        
-        # Calculate new level and remaining exp
-        level_ups = int(skill_exp / experience_needed)
-        remaining_exp = skill_exp % experience_needed
-        
-        # Update skill level
-        new_level = current_level + level_ups
-        self.skills[skill] = new_level + (remaining_exp / experience_needed)
-        
-        # If we've reached a new level
-        if new_level > current_level:
-            print(f"{skill.capitalize()} level up! Now level {new_level}")
-            # Keep the fractional part for progress towards next level
+                # Draw sprite rect
+                if hasattr(self.sprite, 'rect'):
+                    rect = self.sprite.rect.copy()
+                    rect.x -= camera_x
+                    rect.y -= camera_y
+                    pygame.draw.rect(screen, (255, 255, 0), rect, 1)
+
+        except Exception as e:
+            import traceback
+            error_msg = f"Error in player draw: {e}\n{traceback.format_exc()}"
+            game_logger.error(error_msg)
+            # Try to draw error text on screen
+            try:
+                font = pygame.font.Font(None, 24)
+                error_surface = font.render("Player draw error", True, (255, 0, 0))
+                screen.blit(error_surface, (10, 10))
+            except:
+                pass

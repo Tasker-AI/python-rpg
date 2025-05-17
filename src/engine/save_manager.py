@@ -9,16 +9,25 @@ class SaveManager:
     Manages saving and loading game state.
     Automatically saves game progress and allows loading from save files.
     """
-    def __init__(self):
+    def __init__(self, character_name=None):
+        """
+        Initialize the save manager.
+        
+        Args:
+            character_name: Optional character name. If not provided, no save files will be checked.
+        """
         # Ensure save directory path is absolute
         self.save_directory = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "saves"))
         
-        # Default character name
-        self.character_name = "Harry"
+        # Set character name if provided
+        self.character_name = character_name
         
         # Set up the save file paths
-        self.character_save_file = os.path.join(self.save_directory, f"{self.character_name}.json")
+        self.character_save_file = None
         self.world_save_file = os.path.join(self.save_directory, "world.json")
+        
+        if self.character_name:
+            self.character_save_file = os.path.join(self.save_directory, f"{self.character_name}.json")
         
         self.auto_save_interval = 1  # Save every game tick
         self.last_save_tick = 0
@@ -26,35 +35,6 @@ class SaveManager:
         # Ensure save directory exists
         os.makedirs(self.save_directory, exist_ok=True)
         game_logger.info(f"Save manager initialized. Save directory: {self.save_directory}")
-        
-        # Log available save files at startup
-        if os.path.exists(self.character_save_file):
-            game_logger.info(f"Found existing save file for {self.character_name}")
-            try:
-                with open(self.character_save_file, 'r') as file:
-                    save_data = json.load(file)
-                    timestamp = save_data.get('timestamp', 0)
-                    formatted_time = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
-                    game_logger.info(f"Last saved: {formatted_time}")
-            except (json.JSONDecodeError, IOError) as e:
-                game_logger.error(f"Error reading character save file: {e}")
-        else:
-            game_logger.info(f"No existing save file found for {self.character_name}")
-            
-        # Check for world save file
-        if os.path.exists(self.world_save_file):
-            game_logger.info("Found existing world save file")
-            try:
-                with open(self.world_save_file, 'r') as file:
-                    world_data = json.load(file)
-                    timestamp = world_data.get('timestamp', 0)
-                    game_ticks = world_data.get('game_ticks', 0)
-                    formatted_time = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
-                    game_logger.info(f"World last saved: {formatted_time}, Game ticks: {game_ticks}")
-            except (json.JSONDecodeError, IOError) as e:
-                game_logger.error(f"Error reading world save file: {e}")
-        else:
-            game_logger.info("No existing world save file found")
     
     def get_save_files(self):
         """Get the character and world save files if they exist"""
@@ -159,9 +139,8 @@ class SaveManager:
             with open(self.character_save_file, 'w') as file:
                 json.dump(character_state, file, indent=2)
                 
-                # Only log every 10 ticks to reduce spam
-                if current_tick % 10 == 0:
-                    game_logger.info(f"Character state saved for {self.character_name}")
+                # Only log at DEBUG level to reduce console spam
+                game_logger.debug(f"Character state saved for {self.character_name}")
         except IOError as e:
             game_logger.error(f"Error saving character state: {e}")
             return False
@@ -171,9 +150,8 @@ class SaveManager:
             with open(self.world_save_file, 'w') as file:
                 json.dump(world_state, file, indent=2)
                 
-                # Only log every 10 ticks to reduce spam
-                if current_tick % 10 == 0:
-                    game_logger.info("World state saved")
+                # Only log at DEBUG level to reduce console spam
+                game_logger.debug("World state saved")
         except IOError as e:
             game_logger.error(f"Error saving world state: {e}")
             return False

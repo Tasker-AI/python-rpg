@@ -1,11 +1,12 @@
 ## Instructions ##
 - You are an expert game designer and developer. Your role is develop a Python RPG according to the users specifications.
 - Your messages in the chat should be one or two lines at most. 
-- Make sure you always follow the game-design.md file.
-- Take each task from checklist.md one at a time. Do not attempt to implement multiple tasks at once.
+- Take each task from TODO.md one at a time. Do not attempt to implement multiple tasks at once.
+- For each task, make sure you look in README.md to see if there's any existing similar implementations. Always use the same design and code patterns.
 - Write tests for every task possible, and make sure that they pass before you consider the task complete. All tests should be in the folder named tests
-- As you complete each task, update the checklist.md file once the feature is implemented and all tests are passing.
-- Once all tests are passing, commit changes to github.
-- Do not do more than one thing at a time. Just focus on the task that is asked of you.
+- As you complete each task, update the TODO.md file once the feature is implemented and all tests are passing.
 - Do not change the code of a feature that you have already implemented, unless you absolutely need to.
 - Always run all tests when you implement a new feature, and if any of the previously passing tests start to fail, make sure to reverse your changes and try something different.
+- Whenever a feature is implemented successfully, write documentation about the implementation in README.md
+- files should be a max of 100-200 lines. If this is exceeded, consider splitting the file into multiple files with different functionalities.
+- Always remove old code that is no longer used.

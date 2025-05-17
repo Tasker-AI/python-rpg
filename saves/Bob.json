@@ -1,10 +1,10 @@
 {
-  "timestamp": 1747432564,
-  "formatted_time": "2025-05-17 09:56:04",
   "character_name": "Bob",
   "grid_position": [
-    16,
-    9
+    10,
+    10
   ],
+  "timestamp": 1747449270,
+  "formatted_time": "2025-05-17 14:34:30",
   "version": "1.0.0"
 }

@@ -37,7 +37,7 @@ class GameLogger:
         
         # Configure root logger
         self.logger = logging.getLogger('game')
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.DEBUG)  # Set to DEBUG level for more detailed logging
         
         # Clear any existing handlers
         if self.logger.handlers:
@@ -45,11 +45,11 @@ class GameLogger:
         
         # Create file handler
         file_handler = logging.FileHandler(log_filename)
-        file_handler.setLevel(logging.DEBUG)
+        file_handler.setLevel(logging.INFO)  # Changed from DEBUG to INFO
         
         # Create console handler
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.DEBUG)  # Show all messages in console
         
         # Create formatter and add it to the handlers
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
