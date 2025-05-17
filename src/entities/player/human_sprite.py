@@ -98,8 +98,15 @@ class HumanSprite:
                             center_x = sprite_size // 2
                             center_y = sprite_size // 2
                             
+                            # Temporarily set the direction for this sprite
+                            original_direction = self.direction
+                            self.direction = direction
+                            
                             # Draw the character in the current pose and direction
                             self._draw_human(surface, center_x, center_y, pose_num)
+                            
+                            # Restore the original direction
+                            self.direction = original_direction
                             
                             # Store the surface in the cache
                             self.cached_sprites[state][direction] = surface
@@ -661,11 +668,7 @@ class HumanSprite:
                 self.rect.width = frame_width
                 self.rect.height = frame_height
                 
-                # Debug visualization: Draw a rectangle around the sprite
-                try:
-                    pygame.draw.rect(surface, (255, 0, 0), (pos_x, pos_y, frame_width, frame_height), 1)
-                except Exception as e:
-                    print(f"Error drawing debug rect: {e}")
+                # Debug visualization removed - no more red rectangle
                     
             except Exception as e:
                 print(f"Error drawing sprite: {e}")

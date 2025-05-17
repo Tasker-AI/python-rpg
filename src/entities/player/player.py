@@ -33,6 +33,10 @@ class Player:
         
         # Initialize sprite and rect with blue color
         self.sprite = HumanSprite(color=(0, 0, 255))  # Blue clothing
+        
+        # Force regeneration of sprite cache to ensure different animations for each direction
+        self.sprite._generate_cached_sprites()
+        
         self.rect = self.sprite.rect
         
         # Set initial position
@@ -68,6 +72,9 @@ class Player:
         
         # Direction the player is facing
         self.facing = 'down'  # Default facing direction
+        
+        # Character rendering offset
+        self.character_y_offset = 16  # Offset to move character up by 16 pixels
         
         # Movement flags
         self.final_tile_pending = False  # Flag to handle final tile movement
@@ -331,19 +338,34 @@ class Player:
                     # Update the rect position
                     if hasattr(self, 'rect'):
                         self.rect.centerx = int(self.x)
-                        self.rect.centery = int(self.y)
+                        self.rect.centery = int(self.y) - self.character_y_offset  # Apply character y offset
                 else:
                     # No path, just stay at current position
                     self.x = current_x
                     self.y = current_y
                     if hasattr(self, 'rect'):
                         self.rect.centerx = int(self.x)
-                        self.rect.centery = int(self.y)
+                        self.rect.centery = int(self.y) - self.character_y_offset  # Apply character y offset
             
             # Update sprite animation based on movement state
             if hasattr(self, 'sprite') and self.sprite:
+                # Set the sprite's walking state
                 self.sprite.walking = self.moving
-                self.sprite.update(dt, is_moving=self.moving)
+                
+                # Convert facing direction to sprite direction
+                sprite_direction = None
+                if hasattr(self, 'facing'):
+                    if self.facing == 'left':
+                        sprite_direction = 1  # Left
+                    elif self.facing == 'right':
+                        sprite_direction = 3  # Right
+                    elif self.facing == 'up':
+                        sprite_direction = 2  # Up
+                    else:  # down or default
+                        sprite_direction = 0  # Down
+                
+                # Update the sprite with the current direction
+                self.sprite.update(dt, is_moving=self.moving, direction=sprite_direction)
                 
         except Exception as e:
             game_logger.error(f"Error in player update: {e}")
@@ -478,8 +500,8 @@ class Player:
             self.rect.centery = screen_y
             self.sprite.rect = self.rect
             
-            # Draw the sprite with feet at the specified position
-            self.sprite.draw(screen, screen_x, screen_y)
+            # Draw the sprite with feet at the specified position, applying the y offset
+            self.sprite.draw(screen, screen_x, screen_y - self.character_y_offset)
             
             # Draw debug information
             if debug:

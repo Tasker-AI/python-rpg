@@ -1,7 +1,4 @@
-- [ ] Make tilemap into a generator file called map_generator, and then have it generate a map that is static
-- [ ] When map is clicked multiple times in quick succession, the character stalls and doesnt move.
-- [ ] Is asset manager and asset creator used? can they be deleted?
-- [ ] Remove fix save states
+- [ ] Fix save states
 - [ ] Add Entity class for all resources, enemies, player, items, etc.
 - [ ] Add Human class that extends player and can also be used for enemies
 - [ ] Separate the world from the players. World runs in the background at all times.
