@@ -37,6 +37,9 @@ class Player:
         # Force regeneration of sprite cache to ensure different animations for each direction
         self.sprite._generate_cached_sprites()
         
+        # Explicitly set the initial direction to down (0)
+        self.sprite.direction = 0
+        
         self.rect = self.sprite.rect
         
         # Set initial position
@@ -78,6 +81,7 @@ class Player:
         
         # Movement flags
         self.final_tile_pending = False  # Flag to handle final tile movement
+        self.actually_moving = False     # Flag to track when character is physically moving (not just queued)
         self.path = []  # Path for movement
         
         # Attributes and stats
@@ -127,10 +131,42 @@ class Player:
         self.path = path
         
         # Queue the movement until the next tick
-        # We set moving to True but don't process movement yet
+        # We set moving to True to indicate we have a path to follow
+        # but actually_moving stays False until the next game tick
         self.moving = True
-        self.movement_queued = True  # Flag to indicate movement is queued
+        self.actually_moving = False
+        self.movement_queued = True
         self.last_move_tick = getattr(self.world_state, 'game_ticks', 0) - 1  # Ensure movement starts on next tick
+        
+        # Set initial facing direction based on the first step in the path
+        if len(path) > 1:
+            # Get the first movement step
+            first_step = path[1]  # path[0] is current position
+            dx = first_step[0] - start_x
+            dy = first_step[1] - start_y
+            
+            # Set facing direction based on the first step
+            if abs(dx) > abs(dy):
+                self.facing = 'right' if dx > 0 else 'left'
+            else:
+                self.facing = 'down' if dy > 0 else 'up'
+                
+            # Update sprite direction immediately, but NEVER start walking animation here
+            if hasattr(self, 'sprite') and self.sprite:
+                # Just set the direction property directly to avoid any side effects
+                if self.facing == 'left':
+                    self.sprite.direction = 1  # Left
+                elif self.facing == 'right':
+                    self.sprite.direction = 3  # Right
+                elif self.facing == 'up':
+                    self.sprite.direction = 2  # Up
+                else:  # down or default
+                    self.sprite.direction = 0  # Down
+                    
+                # CRITICAL: Force walking to False until actual movement starts
+                self.sprite.walking = False
+                # Reset animation time to ensure we start from a standing pose
+                self.sprite.animation_time = 0
         
         # Clear any pending movement flags
         self.final_tile_pending = False
@@ -273,6 +309,16 @@ class Player:
                     if hasattr(self, 'movement_queued') and self.movement_queued:
                         # Start the movement on this tick
                         self.movement_queued = False
+                        # This is when we actually start moving - set the flag here
+                        self.actually_moving = True
+                        
+                        # Now that we're actually moving, set the sprite's walking state
+                        # THIS IS THE ONLY PLACE WHERE walking SHOULD BE SET TO TRUE
+                        if hasattr(self, 'sprite') and self.sprite:
+                            self.sprite.walking = True
+                            # Start animation from beginning
+                            self.sprite.animation_time = 0
+                            
                         game_logger.debug(f"Starting queued movement on tick {current_tick}")
                         
                     # Check if we need to finalize the last movement
@@ -290,7 +336,8 @@ class Player:
                         # If we've reached the end of the path
                         if not self.path:
                             self.moving = False
-                            
+                            self.actually_moving = False
+                            self.path = []          
                             # Call the arrival callback if it exists
                             if hasattr(self, 'on_arrival_callback') and self.on_arrival_callback:
                                 try:
@@ -347,11 +394,8 @@ class Player:
                         self.rect.centerx = int(self.x)
                         self.rect.centery = int(self.y) - self.character_y_offset  # Apply character y offset
             
-            # Update sprite animation based on movement state
+            # Always update the sprite direction based on facing
             if hasattr(self, 'sprite') and self.sprite:
-                # Set the sprite's walking state
-                self.sprite.walking = self.moving
-                
                 # Convert facing direction to sprite direction
                 sprite_direction = None
                 if hasattr(self, 'facing'):
@@ -364,8 +408,12 @@ class Player:
                     else:  # down or default
                         sprite_direction = 0  # Down
                 
-                # Update the sprite with the current direction
-                self.sprite.update(dt, is_moving=self.moving, direction=sprite_direction)
+                # CRITICAL: Only update the walking state if we're actually moving
+                # This ensures the walking animation only plays when physically moving
+                is_moving = self.actually_moving
+                
+                # Update the sprite with the current direction and walking state
+                self.sprite.update(dt, is_moving=is_moving, direction=sprite_direction)
                 
         except Exception as e:
             game_logger.error(f"Error in player update: {e}")

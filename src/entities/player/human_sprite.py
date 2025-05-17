@@ -601,6 +601,100 @@ class HumanSprite:
         text_rect = text.get_rect(center=(24, 24))
         default_surface.blit(text, text_rect)
         return default_surface
+    def get_current_frame(self):
+        """
+        Get the current animation frame based on the sprite's state and direction.
+        
+        Returns:
+            pygame.Surface: The current frame to display
+        """
+        try:
+            # Determine the animation state based on walking and animation time
+            if self.walking:
+                state = 'walking1' if int(self.animation_time) % 2 == 0 else 'walking2'
+            else:
+                state = 'standing'
+                
+            # Get the frame for the current direction
+            frame = self.cached_sprites[state][self.direction]
+            
+            # If the frame is invalid, fall back to standing frame
+            if frame is None or not hasattr(frame, 'blit'):
+                frame = self.cached_sprites['standing'][self.direction]
+                
+            # If still invalid, use any valid frame
+            if frame is None or not hasattr(frame, 'blit'):
+                for state_name, directions in self.cached_sprites.items():
+                    for dir_frame in directions:
+                        if dir_frame is not None and hasattr(dir_frame, 'blit'):
+                            return dir_frame
+                            
+                # If we still don't have a valid frame, create a default one
+                return self._create_default_surface()
+                
+            return frame
+            
+        except Exception as e:
+            print(f"Error in get_current_frame: {e}")
+            import traceback
+            traceback.print_exc()
+            return self._create_default_surface()
+    
+    def set_direction(self, facing):
+        """
+        Set the sprite's direction based on the facing string.
+        
+        Args:
+            facing (str): Direction to face ('up', 'down', 'left', 'right')
+        """
+        try:
+            # Convert facing string to direction number
+            if facing == 'left':
+                self.direction = 1  # Left
+            elif facing == 'right':
+                self.direction = 3  # Right
+            elif facing == 'up':
+                self.direction = 2  # Up
+            else:  # down or default
+                self.direction = 0  # Down
+                
+        except Exception as e:
+            print(f"Error setting direction: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def update(self, dt, is_moving=False, direction=None):
+        """
+        Update the sprite's animation state.
+        
+        Args:
+            dt (float): Time elapsed since last update in seconds
+            is_moving (bool): Whether the character is moving
+            direction (int, optional): Direction to face (0=down, 1=left, 2=up, 3=right)
+        """
+        try:
+            # Store old direction for debugging
+            old_direction = self.direction
+            
+            # Update walking state
+            self.walking = is_moving
+            
+            # Update direction if specified
+            if direction is not None:
+                # Only log if direction is changing
+                if self.direction != direction:
+                    print(f"Sprite direction changing from {old_direction} to {direction}, walking: {is_moving}")
+                self.direction = direction
+                
+            # Update animation time if walking
+            if self.walking:
+                self.animation_time += dt * self.animation_speed
+                
+        except Exception as e:
+            print(f"Error in sprite update: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def draw(self, surface, x, y):
         """
         Draw the sprite at the specified position.

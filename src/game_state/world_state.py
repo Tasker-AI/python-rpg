@@ -488,9 +488,14 @@ class WorldState:
             game_logger.debug(f"Target position ({end_x}, {end_y}) is not walkable")
             return None
             
-        # Simple heuristic function (Manhattan distance)
+        # Diagonal distance heuristic (better for 8-way movement)
         def heuristic(a, b):
-            return abs(a[0] - b[0]) + abs(a[1] - b[1])
+            dx = abs(a[0] - b[0])
+            dy = abs(a[1] - b[1])
+            # D1 = cost of straight movement, D2 = cost of diagonal movement
+            D1 = 1
+            D2 = 1.4142  # sqrt(2)
+            return D1 * (dx + dy) + (D2 - 2 * D1) * min(dx, dy)
         
         # Initialize data structures
         open_set = []
@@ -500,8 +505,11 @@ class WorldState:
         g_score = {(start_x, start_y): 0}
         f_score = {(start_x, start_y): heuristic((start_x, start_y), (end_x, end_y))}
         
-        # Possible movement directions (4-way movement)
-        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+        # Possible movement directions (8-way movement including diagonals)
+        directions = [
+            (0, 1), (1, 0), (0, -1), (-1, 0),  # Cardinal directions
+            (1, 1), (1, -1), (-1, 1), (-1, -1)   # Diagonal directions
+        ]
         
         while open_set:
             current = heapq.heappop(open_set)[1]
@@ -522,8 +530,15 @@ class WorldState:
                 if neighbor != (end_x, end_y) and not self.is_walkable(neighbor[0], neighbor[1]):
                     continue
                     
-                # Calculate tentative g score
-                tentative_g_score = g_score[current] + 1
+                # For diagonal movement, check that both adjacent tiles are walkable
+                # This prevents cutting through walls diagonally
+                if dx != 0 and dy != 0:
+                    if not self.is_walkable(current[0] + dx, current[1]) or not self.is_walkable(current[0], current[1] + dy):
+                        continue
+                    
+                # Calculate tentative g score (diagonal movement costs more)
+                movement_cost = 1.4142 if (dx != 0 and dy != 0) else 1.0  # sqrt(2) for diagonal, 1 for cardinal
+                tentative_g_score = g_score[current] + movement_cost
                 
                 if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
                     came_from[neighbor] = current
